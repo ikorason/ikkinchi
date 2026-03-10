@@ -54,6 +54,86 @@ impl Store {
         // get/edit/delete will only find the first. Acceptable for v1.
         Ok(format!("{}/{}", date, time))
     }
+
+    pub fn list(&self, limit: usize) -> anyhow::Result<Vec<Memory>> {
+        if !self.memories_dir.exists() {
+            return Ok(vec![]);
+        }
+
+        let mut files: Vec<PathBuf> = std::fs::read_dir(&self.memories_dir)?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("md"))
+            .collect();
+
+        // Sort by filename (date) descending — newest day first
+        files.sort();
+        files.reverse();
+
+        let mut all: Vec<Memory> = Vec::new();
+        for file_path in &files {
+            let date = file_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            let content = std::fs::read_to_string(file_path)?;
+            let mut memories = parse_file(&date, &content);
+            // Within a day: newest time first
+            memories.sort_by(|a, b| b.time.cmp(&a.time));
+            all.extend(memories);
+            if all.len() >= limit {
+                break;
+            }
+        }
+
+        all.truncate(limit);
+        Ok(all)
+    }
+}
+
+fn parse_time_header(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("## ")?;
+    // Must be exactly HH:MM
+    if rest.len() == 5
+        && rest.as_bytes()[2] == b':'
+        && rest[..2].bytes().all(|b| b.is_ascii_digit())
+        && rest[3..].bytes().all(|b| b.is_ascii_digit())
+    {
+        Some(rest.to_string())
+    } else {
+        None
+    }
+}
+
+fn parse_file(date: &str, content: &str) -> Vec<Memory> {
+    let mut memories = Vec::new();
+    let mut current_time: Option<String> = None;
+    let mut current_body: Vec<&str> = Vec::new();
+
+    for line in content.lines() {
+        if let Some(time) = parse_time_header(line) {
+            if let Some(ref t) = current_time {
+                let text = current_body.join("\n").trim().to_string();
+                if !text.is_empty() {
+                    memories.push(Memory::new(date, t, &text));
+                }
+            }
+            current_time = Some(time);
+            current_body.clear();
+        } else {
+            current_body.push(line);
+        }
+    }
+
+    if let Some(ref t) = current_time {
+        let text = current_body.join("\n").trim().to_string();
+        if !text.is_empty() {
+            memories.push(Memory::new(date, t, &text));
+        }
+    }
+
+    memories
 }
 
 #[cfg(test)]
@@ -112,5 +192,61 @@ mod tests {
         let content = std::fs::read_to_string(&file_path).unwrap();
         assert!(content.contains("first"));
         assert!(content.contains("second"));
+    }
+
+    #[test]
+    fn test_list_empty_returns_empty() {
+        let (_dir, store) = test_store();
+        assert!(store.list(20).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_list_returns_memories_newest_first() {
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(
+            &file_path,
+            "## 09:00\n\nearly thought\n\n## 15:30\n\nlate thought\n\n",
+        ).unwrap();
+
+        let memories = store.list(20).unwrap();
+        assert_eq!(memories.len(), 2);
+        assert_eq!(memories[0].time, "15:30"); // newest first
+        assert_eq!(memories[1].time, "09:00");
+    }
+
+    #[test]
+    fn test_list_respects_limit() {
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(
+            &file_path,
+            "## 09:00\n\nfirst\n\n## 10:00\n\nsecond\n\n## 11:00\n\nthird\n\n",
+        ).unwrap();
+
+        let memories = store.list(2).unwrap();
+        assert_eq!(memories.len(), 2);
+    }
+
+    #[test]
+    fn test_list_multiple_days_ordered() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(
+            store.memories_dir.join("2026-03-09.md"),
+            "## 10:00\n\nold\n\n",
+        ).unwrap();
+        std::fs::write(
+            store.memories_dir.join("2026-03-10.md"),
+            "## 10:00\n\nnew\n\n",
+        ).unwrap();
+
+        let memories = store.list(20).unwrap();
+        assert_eq!(memories[0].date, "2026-03-10"); // newer day first
+        assert_eq!(memories[1].date, "2026-03-09");
     }
 }
