@@ -90,6 +90,69 @@ impl Store {
         all.truncate(limit);
         Ok(all)
     }
+
+    pub fn get(&self, id: &str) -> anyhow::Result<Option<Memory>> {
+        let (date, time) = parse_id(id)?;
+        let file_path = self.memories_dir.join(format!("{}.md", date));
+        if !file_path.exists() {
+            return Ok(None);
+        }
+        let content = std::fs::read_to_string(&file_path)?;
+        Ok(parse_file(&date, &content).into_iter().find(|m| m.time == time))
+    }
+
+    pub fn update(&self, id: &str, text: &str) -> anyhow::Result<()> {
+        let (date, time) = parse_id(id)?;
+        let file_path = self.memories_dir.join(format!("{}.md", date));
+        anyhow::ensure!(file_path.exists(), "Memory not found: {}", id);
+        let content = std::fs::read_to_string(&file_path)?;
+        let mut memories = parse_file(&date, &content);
+        let entry = memories
+            .iter_mut()
+            .find(|m| m.time == time)
+            .ok_or_else(|| anyhow::anyhow!("Memory not found: {}", id))?;
+        entry.text = text.trim().to_string();
+        write_file(&file_path, &memories)
+    }
+
+    pub fn delete(&self, id: &str) -> anyhow::Result<()> {
+        let (date, time) = parse_id(id)?;
+        let file_path = self.memories_dir.join(format!("{}.md", date));
+        anyhow::ensure!(file_path.exists(), "Memory not found: {}", id);
+        let content = std::fs::read_to_string(&file_path)?;
+        let memories: Vec<Memory> = parse_file(&date, &content)
+            .into_iter()
+            .filter(|m| m.time != time)
+            .collect();
+        if memories.is_empty() {
+            std::fs::remove_file(&file_path)?;
+        } else {
+            write_file(&file_path, &memories)?;
+        }
+        Ok(())
+    }
+}
+
+fn parse_id(id: &str) -> anyhow::Result<(String, String)> {
+    let mut parts = id.splitn(2, '/');
+    let date = parts
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Invalid memory id: {}", id))?
+        .to_string();
+    let time = parts
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Invalid memory id: {}", id))?
+        .to_string();
+    Ok((date, time))
+}
+
+fn write_file(path: &PathBuf, memories: &[Memory]) -> anyhow::Result<()> {
+    let mut content = String::new();
+    for m in memories {
+        content.push_str(&format!("## {}\n\n{}\n\n", m.time, m.text));
+    }
+    std::fs::write(path, content)?;
+    Ok(())
 }
 
 fn parse_time_header(line: &str) -> Option<String> {
@@ -248,5 +311,71 @@ mod tests {
         let memories = store.list(20).unwrap();
         assert_eq!(memories[0].date, "2026-03-10"); // newer day first
         assert_eq!(memories[1].date, "2026-03-09");
+    }
+
+    #[test]
+    fn test_get_returns_correct_memory() {
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(&file_path, "## 14:32\n\nevent sourcing idea\n\n").unwrap();
+
+        let memory = store.get("2026-03-10/14:32").unwrap();
+        assert!(memory.is_some());
+        assert_eq!(memory.unwrap().text, "event sourcing idea");
+    }
+
+    #[test]
+    fn test_get_missing_returns_none() {
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(&file_path, "## 14:32\n\nsome text\n\n").unwrap();
+
+        let memory = store.get("2026-03-10/99:99").unwrap();
+        assert!(memory.is_none());
+    }
+
+    #[test]
+    fn test_update_changes_text() {
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(&file_path, "## 14:32\n\noriginal\n\n").unwrap();
+
+        store.update("2026-03-10/14:32", "updated").unwrap();
+        let memory = store.get("2026-03-10/14:32").unwrap().unwrap();
+        assert_eq!(memory.text, "updated");
+    }
+
+    #[test]
+    fn test_delete_removes_one_entry() {
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(
+            &file_path,
+            "## 14:32\n\nhello\n\n## 15:00\n\nworld\n\n",
+        ).unwrap();
+
+        store.delete("2026-03-10/14:32").unwrap();
+        assert!(store.get("2026-03-10/14:32").unwrap().is_none());
+        assert!(store.get("2026-03-10/15:00").unwrap().is_some());
+    }
+
+    #[test]
+    fn test_delete_last_entry_removes_file() {
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(&file_path, "## 14:32\n\nhello\n\n").unwrap();
+
+        store.delete("2026-03-10/14:32").unwrap();
+        assert!(!file_path.exists());
     }
 }
