@@ -36,7 +36,7 @@ impl Store {
     pub fn append(&self, text: &str) -> anyhow::Result<String> {
         let now = chrono::Local::now();
         let date = now.format("%Y-%m-%d").to_string();
-        let time = now.format("%H:%M").to_string();
+        let time = now.format("%H:%M:%S").to_string();
 
         std::fs::create_dir_all(&self.memories_dir)?;
         let file_path = self.memories_dir.join(format!("{}.md", date));
@@ -157,16 +157,21 @@ fn write_file(path: &PathBuf, memories: &[Memory]) -> anyhow::Result<()> {
 
 fn parse_time_header(line: &str) -> Option<String> {
     let rest = line.strip_prefix("## ")?;
-    // Must be exactly HH:MM
-    if rest.len() == 5
-        && rest.as_bytes()[2] == b':'
-        && rest[..2].bytes().all(|b| b.is_ascii_digit())
-        && rest[3..].bytes().all(|b| b.is_ascii_digit())
-    {
-        Some(rest.to_string())
+    // Accept HH:MM:SS (new format) or HH:MM (backward compat for existing files)
+    let valid = if rest.len() == 8 {
+        rest.as_bytes()[2] == b':'
+            && rest.as_bytes()[5] == b':'
+            && rest[..2].bytes().all(|b| b.is_ascii_digit())
+            && rest[3..5].bytes().all(|b| b.is_ascii_digit())
+            && rest[6..].bytes().all(|b| b.is_ascii_digit())
+    } else if rest.len() == 5 {
+        rest.as_bytes()[2] == b':'
+            && rest[..2].bytes().all(|b| b.is_ascii_digit())
+            && rest[3..].bytes().all(|b| b.is_ascii_digit())
     } else {
-        None
-    }
+        false
+    };
+    if valid { Some(rest.to_string()) } else { None }
 }
 
 fn parse_file(date: &str, content: &str) -> Vec<Memory> {
@@ -233,7 +238,7 @@ mod tests {
         // id must be "YYYY-MM-DD/HH:MM"
         let parts: Vec<&str> = id.splitn(2, '/').collect();
         assert_eq!(parts.len(), 2);
-        assert_eq!(parts[1].len(), 5); // "HH:MM"
+        assert_eq!(parts[1].len(), 8); // "HH:MM:SS"
 
         // file must exist
         let file_path = store.memories_dir.join(format!("{}.md", parts[0]));
