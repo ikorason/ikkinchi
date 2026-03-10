@@ -1,4 +1,5 @@
 use crate::store::Store;
+use crate::vectordb::VectorDb;
 use anyhow::Result;
 use std::collections::HashSet;
 
@@ -34,6 +35,14 @@ pub async fn run() -> Result<()> {
             println!("Days:     {:>10}", s.days);
             println!("Oldest:   {:>10}", s.oldest);
             println!("Newest:   {:>10}", s.newest);
+            let vector_count = match VectorDb::open().await {
+                Ok(db) => match db.count().await {
+                    Ok(n) => n.to_string(),
+                    Err(_) => "unavailable".to_string(),
+                },
+                Err(_) => "unavailable".to_string(),
+            };
+            println!("Vectors:  {:>10}", vector_count);
         }
     }
     Ok(())
