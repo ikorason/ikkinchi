@@ -6,3 +6,4 @@ pub mod import;
 pub mod search;
 pub mod store;
 pub mod tui;
+pub mod vectordb;

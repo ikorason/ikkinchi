@@ -14,6 +14,7 @@ pub struct EmbeddingConfig {
     pub model: String,
     pub url: String,
     pub api_key_env: Option<String>,
+    pub ndims: Option<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +30,7 @@ impl Default for Config {
                 model: "nomic-embed-text".to_string(),
                 url: "http://localhost:11434".to_string(),
                 api_key_env: None,
+                ndims: Some(768),
             },
             display: DisplayConfig { list_count: 20 },
         }
