@@ -1,4 +1,9 @@
-pub async fn run(_text: &str) -> anyhow::Result<()> {
-    println!("not yet implemented");
+use crate::store::Store;
+use anyhow::Result;
+
+pub async fn run(text: &str) -> Result<()> {
+    let store = Store::from_config();
+    let id = store.append(text)?;
+    println!("Captured: {}", id);
     Ok(())
 }
