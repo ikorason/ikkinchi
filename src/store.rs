@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
@@ -40,14 +41,17 @@ impl Store {
         std::fs::create_dir_all(&self.memories_dir)?;
         let file_path = self.memories_dir.join(format!("{}.md", date));
 
+        let text = text.trim();
         let entry = format!("## {}\n\n{}\n\n", time, text);
-        use std::io::Write;
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
             .open(&file_path)?;
         file.write_all(entry.as_bytes())?;
 
+        // Note: ID is YYYY-MM-DD/HH:MM — two calls within the same minute
+        // produce the same ID string. Both entries exist in the file, but
+        // get/edit/delete will only find the first. Acceptable for v1.
         Ok(format!("{}/{}", date, time))
     }
 }
@@ -94,8 +98,7 @@ mod tests {
 
         // file must contain the entry
         let content = std::fs::read_to_string(&file_path).unwrap();
-        assert!(content.contains("hello world"));
-        assert!(content.contains(&format!("## {}", parts[1])));
+        assert_eq!(content, format!("## {}\n\nhello world\n\n", parts[1]));
     }
 
     #[test]
