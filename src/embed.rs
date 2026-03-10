@@ -18,7 +18,7 @@ impl EmbedClient {
             .api_key(rig::client::Nothing)
             .base_url(url)
             .build()
-            .context("Failed to build Ollama client")?;
+            .context("Failed to construct HTTP client for Ollama")?;
 
         let model = client.embedding_model_with_ndims(model_name.as_str(), ndims);
 
@@ -43,7 +43,9 @@ impl EmbedClient {
             .await
             .with_context(|| "Ollama is not running. Start it with `ollama serve`")?;
 
-        Ok(embeddings.into_iter().next().map(|e| e.vec).unwrap_or_default())
+        embeddings.into_iter().next()
+            .map(|e| e.vec)
+            .ok_or_else(|| anyhow::anyhow!("Ollama returned no embeddings for the input text"))
     }
 
     pub async fn embed_query(&self, text: &str) -> Result<Vec<f64>> {
@@ -59,10 +61,16 @@ impl EmbedClient {
             .await
             .with_context(|| "Ollama is not running. Start it with `ollama serve`")?;
 
-        Ok(embeddings.into_iter().next().map(|e| e.vec).unwrap_or_default())
+        embeddings.into_iter().next()
+            .map(|e| e.vec)
+            .ok_or_else(|| anyhow::anyhow!("Ollama returned no embeddings for the input text"))
     }
 
     pub async fn embed_documents(&self, texts: &[&str]) -> Result<Vec<Vec<f64>>> {
+        if texts.is_empty() {
+            return Ok(vec![]);
+        }
+
         let inputs: Vec<String> = texts
             .iter()
             .map(|t| {
