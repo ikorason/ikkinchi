@@ -48,10 +48,13 @@ impl VectorDb {
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
-        sqlx::query("DELETE FROM embeddings WHERE id = ?")
+        let result = sqlx::query("DELETE FROM embeddings WHERE id = ?")
             .bind(id)
             .execute(&self.pool)
             .await?;
+        if result.rows_affected() == 0 {
+            eprintln!("vectordb: delete: no vector found for id '{}'", id);
+        }
         Ok(())
     }
 
@@ -64,10 +67,10 @@ impl VectorDb {
         let result = rows
             .into_iter()
             .map(|(id, blob)| {
-                let vec = bytes_to_floats(&blob);
-                (id, vec)
+                let vec = bytes_to_floats(&blob)?;
+                Ok((id, vec))
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         Ok(result)
     }
@@ -108,14 +111,16 @@ fn floats_to_bytes(floats: &[f64]) -> Vec<u8> {
     bytes
 }
 
-fn bytes_to_floats(bytes: &[u8]) -> Vec<f64> {
-    bytes
+fn bytes_to_floats(bytes: &[u8]) -> anyhow::Result<Vec<f64>> {
+    anyhow::ensure!(
+        bytes.len() % 8 == 0,
+        "corrupted vector BLOB: length {} is not a multiple of 8",
+        bytes.len()
+    );
+    Ok(bytes
         .chunks_exact(8)
-        .map(|chunk| {
-            let arr: [u8; 8] = chunk.try_into().expect("chunk is exactly 8 bytes");
-            f64::from_le_bytes(arr)
-        })
-        .collect()
+        .map(|chunk| f64::from_le_bytes(chunk.try_into().unwrap()))
+        .collect())
 }
 
 #[cfg(test)]
