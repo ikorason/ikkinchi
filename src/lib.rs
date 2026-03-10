@@ -1,0 +1,8 @@
+pub mod brain;
+pub mod cli;
+pub mod config;
+pub mod embed;
+pub mod import;
+pub mod search;
+pub mod store;
+pub mod tui;
