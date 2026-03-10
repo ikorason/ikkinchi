@@ -5,9 +5,7 @@ use crate::vectordb::VectorDb;
 use anyhow::Result;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
-use rig::OneOrMany;
-use rig::embeddings::Embedding;
-use rig::vector_store::in_memory_store::InMemoryVectorStore;
+use std::collections::HashMap;
 
 /// Merges semantic (id, score) and fuzzy (id, score) results.
 /// Normalizes both to [0,1], computes 0.6*semantic + 0.4*fuzzy, deduplicates.
@@ -25,7 +23,6 @@ pub fn hybrid_rank(
     let max_fuzzy = if max_fuzzy == 0.0 { 1.0 } else { max_fuzzy };
 
     // Build lookup maps
-    use std::collections::HashMap;
     let semantic_map: HashMap<&str, f64> = semantic
         .iter()
         .map(|(id, s)| (id.as_str(), s / max_semantic))
@@ -64,50 +61,25 @@ pub fn hybrid_rank(
     scored
 }
 
-/// Perform semantic search using the InMemoryVectorStore with vectors loaded from SQLite.
+/// Perform semantic search using vectors loaded from SQLite.
 async fn semantic_search(
     embed_client: &EmbedClient,
     vector_db: &VectorDb,
     query: &str,
     limit: usize,
 ) -> Result<Vec<(String, f64)>> {
-    // 1. Load persisted vectors from SQLite
     let rows = vector_db.load_all().await?;
-
     if rows.is_empty() {
         return Ok(vec![]);
     }
 
-    // 2. Hydrate InMemoryVectorStore
-    let mut store: InMemoryVectorStore<String> = InMemoryVectorStore::default();
-    let documents: Vec<(String, String, OneOrMany<Embedding>)> = rows
+    let query_vec = embed_client.embed_query(query).await?;
+
+    let mut results: Vec<(String, f64)> = rows
         .into_iter()
         .map(|(id, vec)| {
-            let embedding = Embedding {
-                document: id.clone(),
-                vec,
-            };
-            (id.clone(), id, OneOrMany::one(embedding))
-        })
-        .collect();
-    store.add_documents_with_ids(documents);
-
-    // 3. Build the embed model and search
-    // We need to embed the query using the embed_client's model directly
-    let query_vec = embed_client.embed_query(query).await?;
-    let query_embedding = Embedding {
-        document: query.to_string(),
-        vec: query_vec,
-    };
-
-    // Compute cosine similarity manually since we have the vectors
-    let mut results: Vec<(String, f64)> = store
-        .iter()
-        .filter_map(|(id, (_, embeddings))| {
-            embeddings.iter().next().map(|emb| {
-                let score = cosine_similarity(&query_embedding.vec, &emb.vec);
-                (id.clone(), score)
-            })
+            let score = cosine_similarity(&query_vec, &vec);
+            (id, score)
         })
         .collect();
 
@@ -183,9 +155,16 @@ pub async fn run(query: &str) -> Result<()> {
     }
 
     // 4. Resolve IDs back to Memory structs
-    for (i, (id, _score)) in ranked.iter().enumerate() {
-        if let Some(m) = store.get(id)? {
-            println!("{:>3}  {}  {}", i + 1, m.id, m.text);
+    let mut display_index = 1;
+    for (id, _score) in &ranked {
+        match store.get(id)? {
+            Some(m) => {
+                println!("{:>3}  {}  {}", display_index, m.id, m.text);
+                display_index += 1;
+            }
+            None => {
+                eprintln!("Warning: memory '{}' found in vector index but not in store (run `ikkinchi reindex`)", id);
+            }
         }
     }
 
