@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
             ikkinchi::cli::export::run(format.as_deref()).await?
         }
         Commands::Stats => ikkinchi::cli::stats::run().await?,
-        Commands::Reindex => println!("not yet implemented"),
+        Commands::Reindex => ikkinchi::cli::reindex::run().await?,
         Commands::Tui => ikkinchi::tui::run().await?,
     }
 
