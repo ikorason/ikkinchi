@@ -2,6 +2,10 @@
 name = "ikkinchi"
 version = "0.1.0"
 edition = "2024"
+description = "Your second brain — a zero-friction CLI for capturing and retrieving thoughts"
+repository = "https://github.com/ikorason/ikkinchi"
+license = "MIT"
+keywords = ["cli", "notes", "search", "ollama", "tui"]
 
 [[bin]]
 name = "ikkinchi"
