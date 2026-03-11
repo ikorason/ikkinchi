@@ -4,7 +4,7 @@ your second brain, a zero-friction CLI for capturing and retrieving thoughts.
 
 > **Status: In Development**
 
-*Ikkinchi* means "second" in Uyghur and Uzbek
+*ikkinchi* means "second" in Uyghur
 
 ```
 ikkinchi add "N+1 query bug in the orders endpoint — join instead of lazy loading"
@@ -12,7 +12,9 @@ ikkinchi add "switched auth to JWT, session store was bottleneck under load"
 ikkinchi search "performance"
 ```
 
-Thoughts are stored as plain markdown files in `~/.ikkinchi/memories/`. Search is hybrid: semantic via Ollama embeddings + fuzzy matching. No folders, no tags, no cloud.
+Thoughts are stored as plain markdown files in `~/.ikkinchi/memories/`.
+
+Search is hybrid: semantic via Ollama embeddings + fuzzy matching. No folders, no tags, no cloud.
 
 ## Install
 
@@ -22,7 +24,9 @@ cargo install ikkinchi
 
 ## Setup
 
-ikkinchi uses [Ollama](https://ollama.com) for local embeddings — no API key, no data leaving your machine. Embeddings are powered by [Rig](https://github.com/0xPlaygrounds/rig), a Rust library for building LLM-powered applications.
+ikkinchi uses [Ollama](https://ollama.com) for local embeddings — no API key, no data leaving your machine.
+
+Embeddings are powered by [Rig](https://github.com/0xPlaygrounds/rig), a Rust library for building LLM-powered applications.
 
 ```bash
 # 1. Install Ollama
@@ -143,5 +147,3 @@ ndims = 768
 [display]
 list_count = 20
 ```
-
-To use a different Ollama model, change `model` and run `ikkinchi reindex`.
