@@ -63,14 +63,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                         use crate::config::Config;
                         use crate::embed::EmbedClient;
                         use crate::vectordb::VectorDb;
-                        if let Ok(config) = Config::load() {
-                            if let Ok(client) = EmbedClient::from_config(&config) {
-                                if let Ok(vec) = client.embed_document(&text_clone).await {
-                                    if let Ok(db) = VectorDb::open().await {
-                                        let _ = db.insert(&id_clone, &vec).await;
-                                    }
-                                }
-                            }
+                        if let Ok(config) = Config::load()
+                            && let Ok(client) = EmbedClient::from_config(&config)
+                            && let Ok(vec) = client.embed_document(&text_clone).await
+                            && let Ok(db) = VectorDb::open().await
+                        {
+                            let _ = db.insert(&id_clone, &vec).await;
                         }
                     });
                     app.input.clear();
