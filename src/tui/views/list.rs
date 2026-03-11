@@ -136,6 +136,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         }
         KeyCode::Enter => {
             if app.selected_memory().is_some() {
+                app.prev_mode = app.mode.clone();
                 app.mode = Mode::View;
             }
         }
@@ -154,6 +155,12 @@ pub fn handle_fuzzy_key(app: &mut App, key: KeyEvent) {
         KeyCode::Backspace => {
             app.input.pop();
             apply_fuzzy_filter(app);
+        }
+        KeyCode::Enter => {
+            if app.selected_memory().is_some() {
+                app.prev_mode = app.mode.clone();
+                app.mode = Mode::View;
+            }
         }
         KeyCode::Char(c) => {
             app.input.push(c);

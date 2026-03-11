@@ -128,7 +128,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             app.input.push(c);
         }
 
-        // Results: j/k navigate, Esc restores full list
+        // Results: j/k navigate, Enter view, Esc restores full list
         (Mode::SemanticSearch(Results), Esc) => {
             app.reset_to_full_list();
             app.mode = Mode::List;
@@ -138,6 +138,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         }
         (Mode::SemanticSearch(Results), Char('k')) | (Mode::SemanticSearch(Results), Up) => {
             app.select_prev()
+        }
+        (Mode::SemanticSearch(Results), Enter) => {
+            if app.selected_memory().is_some() {
+                app.prev_mode = app.mode.clone();
+                app.mode = Mode::View;
+            }
         }
         _ => {}
     }

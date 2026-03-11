@@ -26,6 +26,7 @@ pub enum Mode {
 
 pub struct App {
     pub mode: Mode,
+    pub prev_mode: Mode,
     pub memories: Vec<Memory>,
     pub visible: Vec<Memory>,
     pub selected: usize,
@@ -40,6 +41,7 @@ impl App {
         let visible = memories.clone();
         Self {
             mode: Mode::List,
+            prev_mode: Mode::List,
             memories,
             visible,
             selected: 0,

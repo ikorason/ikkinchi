@@ -1,4 +1,4 @@
-use crate::tui::app::{App, Mode};
+use crate::tui::app::App;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
@@ -36,7 +36,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
-            app.mode = Mode::List;
+            app.mode = app.prev_mode.clone();
         }
         KeyCode::Char('q') => {
             app.should_quit = true;
@@ -68,6 +68,7 @@ fn centered_rect(percent_x: u16, height: u16, area: Rect) -> Rect {
 mod tests {
     use super::*;
     use crate::store::Memory;
+    use crate::tui::app::Mode;
     use crossterm::event::{KeyEventKind, KeyEventState, KeyModifiers};
 
     fn key(code: KeyCode) -> KeyEvent {
@@ -88,11 +89,22 @@ mod tests {
     }
 
     #[test]
-    fn test_esc_returns_to_list() {
+    fn test_esc_returns_to_prev_mode() {
         let mut app = app_with_memory();
+        app.prev_mode = Mode::List;
         app.mode = Mode::View;
         handle_key(&mut app, key(KeyCode::Esc));
         assert_eq!(app.mode, Mode::List);
+    }
+
+    #[test]
+    fn test_esc_returns_to_search_results() {
+        use crate::tui::app::SearchState;
+        let mut app = app_with_memory();
+        app.prev_mode = Mode::SemanticSearch(SearchState::Results);
+        app.mode = Mode::View;
+        handle_key(&mut app, key(KeyCode::Esc));
+        assert_eq!(app.mode, Mode::SemanticSearch(SearchState::Results));
     }
 
     #[test]
