@@ -158,18 +158,25 @@ pub fn handle_fuzzy_key(app: &mut App, key: KeyEvent) {
 fn apply_fuzzy_filter(app: &mut App) {
     use fuzzy_matcher::FuzzyMatcher;
     use fuzzy_matcher::skim::SkimMatcherV2;
+
+    if app.input.is_empty() {
+        app.visible = app.memories.clone();
+        app.selected = 0;
+        return;
+    }
+
     let matcher = SkimMatcherV2::default();
     let query = app.input.clone();
-    if query.is_empty() {
-        app.visible = app.memories.clone();
-    } else {
-        app.visible = app
-            .memories
-            .iter()
-            .filter(|m| matcher.fuzzy_match(&m.text, &query).is_some())
-            .cloned()
-            .collect();
-    }
+    let mut scored: Vec<(i64, usize)> = app
+        .memories
+        .iter()
+        .enumerate()
+        .filter_map(|(i, m)| {
+            matcher.fuzzy_match(&m.text, &query).map(|score| (score, i))
+        })
+        .collect();
+    scored.sort_by(|a, b| b.0.cmp(&a.0));
+    app.visible = scored.into_iter().map(|(_, i)| app.memories[i].clone()).collect();
     app.selected = 0;
 }
 
@@ -273,5 +280,68 @@ mod tests {
         let mut app = App::from_memories(vec![]);
         handle_key(&mut app, key(KeyCode::Char('d')));
         assert_eq!(app.mode, Mode::List);
+    }
+
+    // FuzzyFilter tests
+
+    #[test]
+    fn test_fuzzy_typing_updates_input() {
+        let mut app = two_item_app();
+        app.mode = Mode::FuzzyFilter;
+        handle_fuzzy_key(&mut app, key(KeyCode::Char('f')));
+        assert_eq!(app.input, "f");
+    }
+
+    #[test]
+    fn test_fuzzy_typing_filters_visible() {
+        let mut app = App::from_memories(vec![
+            make_memory("2026-03-10/14:00:00", "foo bar"),
+            make_memory("2026-03-10/15:00:00", "something else"),
+        ]);
+        app.mode = Mode::FuzzyFilter;
+        handle_fuzzy_key(&mut app, key(KeyCode::Char('f')));
+        handle_fuzzy_key(&mut app, key(KeyCode::Char('o')));
+        handle_fuzzy_key(&mut app, key(KeyCode::Char('o')));
+        assert_eq!(app.visible.len(), 1);
+        assert!(app.visible[0].text.contains("foo"));
+    }
+
+    #[test]
+    fn test_fuzzy_empty_query_shows_full_list() {
+        let mut app = App::from_memories(vec![
+            make_memory("2026-03-10/14:00:00", "foo bar"),
+            make_memory("2026-03-10/15:00:00", "something else"),
+        ]);
+        app.mode = Mode::FuzzyFilter;
+        app.input = "xyz".to_string();
+        app.visible = vec![];
+        handle_fuzzy_key(&mut app, key(KeyCode::Backspace));
+        handle_fuzzy_key(&mut app, key(KeyCode::Backspace));
+        handle_fuzzy_key(&mut app, key(KeyCode::Backspace));
+        assert_eq!(app.visible.len(), 2);
+    }
+
+    #[test]
+    fn test_fuzzy_esc_returns_to_list() {
+        let mut app = App::from_memories(vec![
+            make_memory("2026-03-10/14:00:00", "foo bar"),
+            make_memory("2026-03-10/15:00:00", "something else"),
+        ]);
+        app.mode = Mode::FuzzyFilter;
+        app.input = "foo".to_string();
+        handle_fuzzy_key(&mut app, key(KeyCode::Esc));
+        assert_eq!(app.mode, Mode::List);
+        assert!(app.input.is_empty());
+        assert_eq!(app.visible.len(), 2);
+    }
+
+    #[test]
+    fn test_fuzzy_j_k_navigate_results() {
+        let mut app = two_item_app();
+        app.mode = Mode::FuzzyFilter;
+        handle_fuzzy_key(&mut app, key(KeyCode::Down));
+        assert_eq!(app.selected, 1);
+        handle_fuzzy_key(&mut app, key(KeyCode::Up));
+        assert_eq!(app.selected, 0);
     }
 }
