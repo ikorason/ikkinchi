@@ -150,9 +150,12 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
 }
 
 async fn run_semantic_search(query: &str, memories: &[Memory]) -> SearchResult {
+    use crate::cli::search::{MIN_SEMANTIC_SCORE, hybrid_rank};
     use crate::config::Config;
     use crate::embed::EmbedClient;
     use crate::vectordb::VectorDb;
+    use fuzzy_matcher::FuzzyMatcher;
+    use fuzzy_matcher::skim::SkimMatcherV2;
     use rig::embeddings::Embedding;
     use rig::embeddings::distance::VectorDistance;
 
@@ -160,49 +163,67 @@ async fn run_semantic_search(query: &str, memories: &[Memory]) -> SearchResult {
         Ok(c) => c,
         Err(e) => return SearchResult::Err(format!("Config error: {}", e)),
     };
-    let embed_client = match EmbedClient::from_config(&config) {
-        Ok(c) => c,
-        Err(_) => {
-            return SearchResult::Err("Ollama unavailable. Start with: ollama serve".into())
-        }
-    };
-    let vector_db = match VectorDb::open().await {
-        Ok(db) => db,
-        Err(_) => return SearchResult::Err("No vectors found. Run: ikkinchi reindex".into()),
-    };
-    let rows = match vector_db.load_all().await {
-        Ok(r) => r,
-        Err(e) => return SearchResult::Err(format!("Vector DB error: {}", e)),
-    };
-    if rows.is_empty() {
-        return SearchResult::Err("No vectors found. Run: ikkinchi reindex".into());
-    }
-    let query_vec = match embed_client.embed_query(query).await {
-        Ok(v) => Embedding {
-            document: String::new(),
-            vec: v,
-        },
-        Err(_) => {
-            return SearchResult::Err("Ollama unavailable. Start with: ollama serve".into())
-        }
-    };
     let limit = config.display.list_count;
-    let mut scored: Vec<(String, f64)> = rows
-        .into_iter()
-        .map(|(id, vec)| {
-            let stored = Embedding {
-                document: String::new(),
-                vec,
-            };
-            let score = query_vec.cosine_similarity(&stored, false);
-            (id, score)
-        })
-        .collect();
-    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    scored.truncate(limit);
+
+    // Fuzzy search (always runs)
+    let matcher = SkimMatcherV2::default();
+    let fuzzy_results: Vec<(String, f64)> = {
+        let mut scored: Vec<(String, f64)> = memories
+            .iter()
+            .filter_map(|m| {
+                matcher
+                    .fuzzy_match(&m.text, query)
+                    .map(|score| (m.id.clone(), score as f64))
+            })
+            .collect();
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        if let Some(&(_, max_score)) = scored.first() {
+            let threshold = max_score * 0.5;
+            scored.retain(|(_, s)| *s >= threshold);
+        }
+        scored.truncate(limit);
+        scored
+    };
+
+    // Semantic search (falls back to fuzzy-only if Ollama unavailable)
+    let semantic_results: Vec<(String, f64)> = 'semantic: {
+        let embed_client = match EmbedClient::from_config(&config) {
+            Ok(c) => c,
+            Err(_) => break 'semantic vec![],
+        };
+        let vector_db = match VectorDb::open().await {
+            Ok(db) => db,
+            Err(_) => break 'semantic vec![],
+        };
+        let rows = match vector_db.load_all().await {
+            Ok(r) => r,
+            Err(_) => break 'semantic vec![],
+        };
+        if rows.is_empty() {
+            break 'semantic vec![];
+        }
+        let query_vec = match embed_client.embed_query(query).await {
+            Ok(v) => Embedding { document: String::new(), vec: v },
+            Err(_) => break 'semantic vec![],
+        };
+        let mut scored: Vec<(String, f64)> = rows
+            .into_iter()
+            .filter_map(|(id, vec)| {
+                let stored = Embedding { document: String::new(), vec };
+                let score = query_vec.cosine_similarity(&stored, false);
+                if score >= MIN_SEMANTIC_SCORE { Some((id, score)) } else { None }
+            })
+            .collect();
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(limit);
+        scored
+    };
+
+    let ranked = hybrid_rank(&semantic_results, &fuzzy_results, limit);
+
     let memory_map: std::collections::HashMap<&str, &Memory> =
         memories.iter().map(|m| (m.id.as_str(), m)).collect();
-    let results: Vec<Memory> = scored
+    let results: Vec<Memory> = ranked
         .iter()
         .filter_map(|(id, _)| memory_map.get(id.as_str()).copied().cloned())
         .collect();

@@ -63,6 +63,10 @@ pub fn hybrid_rank(
     scored
 }
 
+/// Minimum cosine similarity score for a result to be included in semantic search.
+/// Filters out entries that are semantically unrelated to the query.
+pub const MIN_SEMANTIC_SCORE: f64 = 0.5;
+
 /// Perform semantic search using vectors loaded from SQLite.
 async fn semantic_search(
     embed_client: &EmbedClient,
@@ -82,10 +86,10 @@ async fn semantic_search(
 
     let mut results: Vec<(String, f64)> = rows
         .into_iter()
-        .map(|(id, vec)| {
+        .filter_map(|(id, vec)| {
             let stored = Embedding { document: String::new(), vec };
             let score = query_vec.cosine_similarity(&stored, false);
-            (id, score)
+            if score >= MIN_SEMANTIC_SCORE { Some((id, score)) } else { None }
         })
         .collect();
 
@@ -123,7 +127,9 @@ pub async fn run(query: &str) -> Result<()> {
             }
         };
 
-    // 2. Fuzzy search — run inline to get (id, score) pairs
+    // 2. Fuzzy search — run inline to get (id, score) pairs.
+    // Only keep results within 50% of the top fuzzy score to filter out weak
+    // subsequence matches (e.g. "w-o-r-k" spread across unrelated sentences).
     let matcher = SkimMatcherV2::default();
     let all_memories = store.list(usize::MAX)?;
     let fuzzy_results: Vec<(String, f64)> = {
@@ -136,6 +142,10 @@ pub async fn run(query: &str) -> Result<()> {
             })
             .collect();
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        if let Some(&(_, max_score)) = scored.first() {
+            let threshold = max_score * 0.5;
+            scored.retain(|(_, s)| *s >= threshold);
+        }
         scored.truncate(limit);
         scored
     };
