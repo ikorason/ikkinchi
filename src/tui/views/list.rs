@@ -141,16 +141,16 @@ pub fn handle_fuzzy_key(app: &mut App, key: KeyEvent) {
             app.reset_to_full_list();
             app.mode = Mode::List;
         }
-        KeyCode::Char(c) => {
-            app.input.push(c);
-            apply_fuzzy_filter(app);
-        }
+        KeyCode::Char('j') | KeyCode::Down => app.select_next(),
+        KeyCode::Char('k') | KeyCode::Up => app.select_prev(),
         KeyCode::Backspace => {
             app.input.pop();
             apply_fuzzy_filter(app);
         }
-        KeyCode::Down => app.select_next(),
-        KeyCode::Up => app.select_prev(),
+        KeyCode::Char(c) => {
+            app.input.push(c);
+            apply_fuzzy_filter(app);
+        }
         _ => {}
     }
 }
@@ -339,9 +339,9 @@ mod tests {
     fn test_fuzzy_j_k_navigate_results() {
         let mut app = two_item_app();
         app.mode = Mode::FuzzyFilter;
-        handle_fuzzy_key(&mut app, key(KeyCode::Down));
+        handle_fuzzy_key(&mut app, key(KeyCode::Char('j')));
         assert_eq!(app.selected, 1);
-        handle_fuzzy_key(&mut app, key(KeyCode::Up));
+        handle_fuzzy_key(&mut app, key(KeyCode::Char('k')));
         assert_eq!(app.selected, 0);
     }
 }
