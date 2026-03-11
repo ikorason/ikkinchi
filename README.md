@@ -6,6 +6,8 @@ your second brain, a zero-friction CLI for capturing and retrieving thoughts.
 
 *ikkinchi* means "second" in Uyghur
 
+![ikkinchi demo](ikkinchi-demo.gif)
+
 Thoughts are stored as plain markdown files in `~/.ikkinchi/memories/`.
 
 Search is hybrid: semantic via Ollama embeddings + fuzzy matching. No folders, no tags, no cloud.
