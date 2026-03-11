@@ -6,12 +6,6 @@ your second brain, a zero-friction CLI for capturing and retrieving thoughts.
 
 *ikkinchi* means "second" in Uyghur
 
-```
-ikkinchi add "N+1 query bug in the orders endpoint — join instead of lazy loading"
-ikkinchi add "switched auth to JWT, session store was bottleneck under load"
-ikkinchi search "performance"
-```
-
 Thoughts are stored as plain markdown files in `~/.ikkinchi/memories/`.
 
 Search is hybrid: semantic via Ollama embeddings + fuzzy matching. No folders, no tags, no cloud.
@@ -48,9 +42,9 @@ ikkinchi init
 **Capture thoughts instantly:**
 
 ```bash
-ikkinchi add "event sourcing could solve our audit trail problem"
-ikkinchi add "rust ownership model prevents memory leaks at compile time"
-ikkinchi add "react hooks let you use state in functional components"
+ikkinchi add "what do fish think about all day?"
+ikkinchi add "showers are where I rehearse arguments that will never happen and also solve problems I don't currently have"
+ikkinchi add "There is a @swc/react-compiler package but no documentation"
 ```
 
 Each thought is appended to a daily markdown file (`~/.ikkinchi/memories/2026-03-10.md`). In the background, Rig calls Ollama to embed the text into a 768-dimension vector, which is persisted in a local SQLite store (`~/.ikkinchi/vectors.db`).
@@ -58,14 +52,8 @@ Each thought is appended to a daily markdown file (`~/.ikkinchi/memories/2026-03
 **Search semantically — not just by keyword:**
 
 ```bash
-$ ikkinchi search "memory management"
-  1  2026-03-10/19:54:08  rust ownership model prevents memory leaks at compile time
-  2  2026-03-10/19:54:17  the borrow checker enforces single ownership rules
-  3  2026-03-10/19:53:58  event sourcing could solve our audit trail problem
-  ...
-
-$ ikkinchi search "frontend state"
-  1  2026-03-10/19:54:25  react hooks let you use state in functional components
+$ ikkinchi search "reactjs"
+  1  2026-03-10/19:54:08  There is a @swc/react-compiler package but no documentation
   ...
 ```
 
