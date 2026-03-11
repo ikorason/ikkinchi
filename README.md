@@ -74,6 +74,7 @@ At search time, Rig embeds your query using the same Ollama model and computes c
 **Browse and manage:**
 
 ```bash
+ikkinchi tui               # open interactive terminal UI
 ikkinchi list              # newest first
 ikkinchi edit <id> <text>  # update a thought (re-embeds automatically)
 ikkinchi delete <id>       # remove a thought
@@ -122,6 +123,7 @@ You can read, edit, or back up your memories directly — they're just markdown.
 ikkinchi init              Set up ~/.ikkinchi/, create config
 ikkinchi add <text>        Capture a thought
 ikkinchi search <query>    Semantic + fuzzy hybrid search
+ikkinchi tui               Launch interactive terminal UI
 ikkinchi list [--count N]  Browse recent memories
 ikkinchi edit <id> <text>  Update a memory
 ikkinchi delete <id>...    Delete one or more memories
