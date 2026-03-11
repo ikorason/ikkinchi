@@ -5,6 +5,8 @@ use crate::vectordb::VectorDb;
 use anyhow::Result;
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
+use rig::embeddings::Embedding;
+use rig::embeddings::distance::VectorDistance;
 use std::collections::HashMap;
 
 /// Merges semantic (id, score) and fuzzy (id, score) results.
@@ -73,12 +75,16 @@ async fn semantic_search(
         return Ok(vec![]);
     }
 
-    let query_vec = embed_client.embed_query(query).await?;
+    let query_vec = Embedding {
+        document: String::new(),
+        vec: embed_client.embed_query(query).await?,
+    };
 
     let mut results: Vec<(String, f64)> = rows
         .into_iter()
         .map(|(id, vec)| {
-            let score = cosine_similarity(&query_vec, &vec);
+            let stored = Embedding { document: String::new(), vec };
+            let score = query_vec.cosine_similarity(&stored, false);
             (id, score)
         })
         .collect();
@@ -89,18 +95,6 @@ async fn semantic_search(
     Ok(results)
 }
 
-fn cosine_similarity(a: &[f64], b: &[f64]) -> f64 {
-    if a.len() != b.len() || a.is_empty() {
-        return 0.0;
-    }
-    let dot: f64 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let norm_a: f64 = a.iter().map(|x| x * x).sum::<f64>().sqrt();
-    let norm_b: f64 = b.iter().map(|x| x * x).sum::<f64>().sqrt();
-    if norm_a == 0.0 || norm_b == 0.0 {
-        return 0.0;
-    }
-    dot / (norm_a * norm_b)
-}
 
 pub async fn run(query: &str) -> Result<()> {
     let config = Config::load()?;
