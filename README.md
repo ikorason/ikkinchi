@@ -1,8 +1,10 @@
 # ikkinchi
 
+your second brain, a zero-friction CLI for capturing and retrieving thoughts.
+
 > **Status: In Development**
 
-*Ikkinchi* means "second" in Uyghur and Uzbek — your second brain, a zero-friction CLI for capturing and retrieving thoughts.
+*Ikkinchi* means "second" in Uyghur and Uzbek
 
 ```
 ikkinchi add "N+1 query bug in the orders endpoint — join instead of lazy loading"
