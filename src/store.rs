@@ -3,9 +3,9 @@ use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Memory {
-    pub id: String,   // "2026-03-10/14:32"
+    pub id: String,   // "2026-03-10/14:32:05"
     pub date: String, // "2026-03-10"
-    pub time: String, // "14:32"
+    pub time: String, // "14:32:05"
     pub text: String,
 }
 
@@ -49,9 +49,6 @@ impl Store {
             .open(&file_path)?;
         file.write_all(entry.as_bytes())?;
 
-        // Note: ID is YYYY-MM-DD/HH:MM — two calls within the same minute
-        // produce the same ID string. Both entries exist in the file, but
-        // get/edit/delete will only find the first. Acceptable for v1.
         Ok(format!("{}/{}", date, time))
     }
 
@@ -217,10 +214,10 @@ mod tests {
 
     #[test]
     fn test_memory_new() {
-        let m = Memory::new("2026-03-10", "14:32", "hello");
-        assert_eq!(m.id, "2026-03-10/14:32");
+        let m = Memory::new("2026-03-10", "14:32:05", "hello");
+        assert_eq!(m.id, "2026-03-10/14:32:05");
         assert_eq!(m.date, "2026-03-10");
-        assert_eq!(m.time, "14:32");
+        assert_eq!(m.time, "14:32:05");
         assert_eq!(m.text, "hello");
     }
 
@@ -235,7 +232,7 @@ mod tests {
         let (_dir, store) = test_store();
         let id = store.append("hello world").unwrap();
 
-        // id must be "YYYY-MM-DD/HH:MM"
+        // id must be "YYYY-MM-DD/HH:MM:SS"
         let parts: Vec<&str> = id.splitn(2, '/').collect();
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[1].len(), 8); // "HH:MM:SS"
@@ -276,13 +273,13 @@ mod tests {
         std::fs::create_dir_all(&store.memories_dir).unwrap();
         std::fs::write(
             &file_path,
-            "## 09:00\n\nearly thought\n\n## 15:30\n\nlate thought\n\n",
+            "## 09:00:00\n\nearly thought\n\n## 15:30:00\n\nlate thought\n\n",
         ).unwrap();
 
         let memories = store.list(20).unwrap();
         assert_eq!(memories.len(), 2);
-        assert_eq!(memories[0].time, "15:30"); // newest first
-        assert_eq!(memories[1].time, "09:00");
+        assert_eq!(memories[0].time, "15:30:00"); // newest first
+        assert_eq!(memories[1].time, "09:00:00");
     }
 
     #[test]
@@ -293,7 +290,7 @@ mod tests {
         std::fs::create_dir_all(&store.memories_dir).unwrap();
         std::fs::write(
             &file_path,
-            "## 09:00\n\nfirst\n\n## 10:00\n\nsecond\n\n## 11:00\n\nthird\n\n",
+            "## 09:00:00\n\nfirst\n\n## 10:00:00\n\nsecond\n\n## 11:00:00\n\nthird\n\n",
         ).unwrap();
 
         let memories = store.list(2).unwrap();
@@ -306,11 +303,11 @@ mod tests {
         std::fs::create_dir_all(&store.memories_dir).unwrap();
         std::fs::write(
             store.memories_dir.join("2026-03-09.md"),
-            "## 10:00\n\nold\n\n",
+            "## 10:00:00\n\nold\n\n",
         ).unwrap();
         std::fs::write(
             store.memories_dir.join("2026-03-10.md"),
-            "## 10:00\n\nnew\n\n",
+            "## 10:00:00\n\nnew\n\n",
         ).unwrap();
 
         let memories = store.list(20).unwrap();
@@ -324,9 +321,9 @@ mod tests {
         let date = "2026-03-10";
         let file_path = store.memories_dir.join(format!("{}.md", date));
         std::fs::create_dir_all(&store.memories_dir).unwrap();
-        std::fs::write(&file_path, "## 14:32\n\nevent sourcing idea\n\n").unwrap();
+        std::fs::write(&file_path, "## 14:32:05\n\nevent sourcing idea\n\n").unwrap();
 
-        let memory = store.get("2026-03-10/14:32").unwrap();
+        let memory = store.get("2026-03-10/14:32:05").unwrap();
         assert!(memory.is_some());
         assert_eq!(memory.unwrap().text, "event sourcing idea");
     }
@@ -337,9 +334,9 @@ mod tests {
         let date = "2026-03-10";
         let file_path = store.memories_dir.join(format!("{}.md", date));
         std::fs::create_dir_all(&store.memories_dir).unwrap();
-        std::fs::write(&file_path, "## 14:32\n\nsome text\n\n").unwrap();
+        std::fs::write(&file_path, "## 14:32:05\n\nsome text\n\n").unwrap();
 
-        let memory = store.get("2026-03-10/99:99").unwrap();
+        let memory = store.get("2026-03-10/99:99:99").unwrap();
         assert!(memory.is_none());
     }
 
@@ -349,10 +346,10 @@ mod tests {
         let date = "2026-03-10";
         let file_path = store.memories_dir.join(format!("{}.md", date));
         std::fs::create_dir_all(&store.memories_dir).unwrap();
-        std::fs::write(&file_path, "## 14:32\n\noriginal\n\n").unwrap();
+        std::fs::write(&file_path, "## 14:32:05\n\noriginal\n\n").unwrap();
 
-        store.update("2026-03-10/14:32", "updated").unwrap();
-        let memory = store.get("2026-03-10/14:32").unwrap().unwrap();
+        store.update("2026-03-10/14:32:05", "updated").unwrap();
+        let memory = store.get("2026-03-10/14:32:05").unwrap().unwrap();
         assert_eq!(memory.text, "updated");
     }
 
@@ -364,12 +361,12 @@ mod tests {
         std::fs::create_dir_all(&store.memories_dir).unwrap();
         std::fs::write(
             &file_path,
-            "## 14:32\n\nhello\n\n## 15:00\n\nworld\n\n",
+            "## 14:32:05\n\nhello\n\n## 15:00:00\n\nworld\n\n",
         ).unwrap();
 
-        store.delete("2026-03-10/14:32").unwrap();
-        assert!(store.get("2026-03-10/14:32").unwrap().is_none());
-        assert!(store.get("2026-03-10/15:00").unwrap().is_some());
+        store.delete("2026-03-10/14:32:05").unwrap();
+        assert!(store.get("2026-03-10/14:32:05").unwrap().is_none());
+        assert!(store.get("2026-03-10/15:00:00").unwrap().is_some());
     }
 
     #[test]
@@ -378,9 +375,23 @@ mod tests {
         let date = "2026-03-10";
         let file_path = store.memories_dir.join(format!("{}.md", date));
         std::fs::create_dir_all(&store.memories_dir).unwrap();
-        std::fs::write(&file_path, "## 14:32\n\nhello\n\n").unwrap();
+        std::fs::write(&file_path, "## 14:32:05\n\nhello\n\n").unwrap();
 
-        store.delete("2026-03-10/14:32").unwrap();
+        store.delete("2026-03-10/14:32:05").unwrap();
         assert!(!file_path.exists());
+    }
+
+    #[test]
+    fn test_parse_backward_compat_hhmm_format() {
+        // Old files written before seconds were added must still parse correctly.
+        let (_dir, store) = test_store();
+        let date = "2026-03-10";
+        let file_path = store.memories_dir.join(format!("{}.md", date));
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(&file_path, "## 14:32\n\nlegacy entry\n\n").unwrap();
+
+        let memory = store.get("2026-03-10/14:32").unwrap();
+        assert!(memory.is_some());
+        assert_eq!(memory.unwrap().text, "legacy entry");
     }
 }

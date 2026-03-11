@@ -49,7 +49,7 @@ pub enum Commands {
 
     /// Replace a memory's content
     Edit {
-        /// Memory ID (e.g. 2026-03-10/14:32)
+        /// Memory ID (e.g. 2026-03-10/14:32:05)
         id: String,
         /// New content
         text: String,

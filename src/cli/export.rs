@@ -57,35 +57,35 @@ mod tests {
 
     #[test]
     fn test_export_markdown_single() {
-        let memories = vec![make_memory("2026-03-10", "14:32", "event sourcing idea")];
+        let memories = vec![make_memory("2026-03-10", "14:32:05", "event sourcing idea")];
         let result = format_memories(&memories, None).unwrap();
-        assert_eq!(result, "## 2026-03-10/14:32\n\nevent sourcing idea");
+        assert_eq!(result, "## 2026-03-10/14:32:05\n\nevent sourcing idea");
     }
 
     #[test]
     fn test_export_markdown_multiple() {
         let memories = vec![
-            make_memory("2026-03-10", "14:32", "first"),
-            make_memory("2026-03-10", "15:00", "second"),
+            make_memory("2026-03-10", "14:32:05", "first"),
+            make_memory("2026-03-10", "15:00:00", "second"),
         ];
         let result = format_memories(&memories, None).unwrap();
-        assert_eq!(result, "## 2026-03-10/14:32\n\nfirst\n\n## 2026-03-10/15:00\n\nsecond");
+        assert_eq!(result, "## 2026-03-10/14:32:05\n\nfirst\n\n## 2026-03-10/15:00:00\n\nsecond");
     }
 
     #[test]
     fn test_export_json_single() {
-        let memories = vec![make_memory("2026-03-10", "14:32", "event sourcing idea")];
+        let memories = vec![make_memory("2026-03-10", "14:32:05", "event sourcing idea")];
         let result = format_memories(&memories, Some("json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        assert_eq!(parsed[0]["id"], "2026-03-10/14:32");
+        assert_eq!(parsed[0]["id"], "2026-03-10/14:32:05");
         assert_eq!(parsed[0]["text"], "event sourcing idea");
     }
 
     #[test]
     fn test_export_json_multiple() {
         let memories = vec![
-            make_memory("2026-03-10", "14:32", "first"),
-            make_memory("2026-03-10", "15:00", "second"),
+            make_memory("2026-03-10", "14:32:05", "first"),
+            make_memory("2026-03-10", "15:00:00", "second"),
         ];
         let result = format_memories(&memories, Some("json")).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();

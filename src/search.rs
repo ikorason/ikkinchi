@@ -78,7 +78,7 @@ mod tests {
         fs::create_dir_all(&store.memories_dir).unwrap();
         fs::write(
             store.memories_dir.join("2026-03-10.md"),
-            "## 09:00\n\nrust error handling\n\n## 10:00\n\nrust ownership\n\n## 11:00\n\nrust lifetimes\n\n",
+            "## 09:00:00\n\nrust error handling\n\n## 10:00:00\n\nrust ownership\n\n## 11:00:00\n\nrust lifetimes\n\n",
         )
         .unwrap();
 

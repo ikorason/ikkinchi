@@ -142,7 +142,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let db = make_db(&dir).await;
 
-        let id = "2026-03-10/14:32";
+        let id = "2026-03-10/14:32:05";
         let vec = sample_vec(1.0);
         db.insert(id, &vec).await.unwrap();
 
