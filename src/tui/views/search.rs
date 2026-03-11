@@ -20,7 +20,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         _ => return,
     }
 
-    let modal = centered_rect(60, 7, area);
+    let modal = centered_rect(60, 5, area);
     frame.render_widget(Clear, modal);
 
     // Choose border color based on state
@@ -40,12 +40,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
-    // Split inner area into 5 lines: line0, line1, line2, line3, line4
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
@@ -255,6 +252,10 @@ mod tests {
         ])
     }
 
+    fn search_app() -> App {
+        two_item_app()
+    }
+
     #[test]
     fn test_typing_updates_input() {
         let mut app = two_item_app();
@@ -316,5 +317,14 @@ mod tests {
             app.mode,
             Mode::SemanticSearch(SearchState::Loading)
         ));
+    }
+
+    #[test]
+    fn test_esc_while_loading_returns_to_list() {
+        let mut app = search_app();
+        app.mode = Mode::SemanticSearch(SearchState::Loading);
+        handle_key(&mut app, key(KeyCode::Esc));
+        assert!(matches!(app.mode, Mode::List));
+        assert!(app.input.is_empty());
     }
 }

@@ -47,6 +47,7 @@ async fn event_loop(
                 Ok(SearchResult::Err(msg)) => {
                     app.error = Some(msg);
                     app.search_rx = None;
+                    app.mode = Mode::SemanticSearch(SearchState::Typing);
                 }
                 Err(TryRecvError::Empty) => {}
                 Err(TryRecvError::Disconnected) => {
