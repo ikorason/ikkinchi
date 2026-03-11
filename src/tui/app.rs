@@ -1,6 +1,7 @@
 use crate::store::{Memory, Store};
 use tokio::sync::mpsc::Receiver;
 
+#[derive(Debug)]
 pub enum SearchResult {
     Ok(Vec<Memory>),
     Err(String),
