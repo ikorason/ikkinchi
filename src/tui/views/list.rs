@@ -86,8 +86,10 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, memory)| {
-            let text_display = if memory.text.chars().count() > 50 {
-                let truncated: String = memory.text.chars().take(50).collect();
+            // Available width: total - borders(2) - prefix(2) - index(3) - gap(2) - id(19) - gap(2)
+            let text_max = (area.width as usize).saturating_sub(30).max(10);
+            let text_display = if memory.text.chars().count() > text_max {
+                let truncated: String = memory.text.chars().take(text_max).collect();
                 format!("{}…", truncated)
             } else {
                 memory.text.clone()
