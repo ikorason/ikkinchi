@@ -34,13 +34,14 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         let count = app.visible.len();
         format!(" Esc to return · {} results ", count)
     } else {
-        " / fuzzy · s search · a add · d del · q ".to_string()
+        " / fuzzy · s search · ↵ view · a add · d del · q ".to_string()
     };
 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(border_type)
         .border_style(Style::default().fg(border_color))
+        .title(Line::from(" ikkinchi ").alignment(Alignment::Left))
         .title(Line::from(title_right).alignment(Alignment::Right))
         .title_bottom(Line::from(footer_text).alignment(Alignment::Left));
 
@@ -132,6 +133,11 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('s') => {
             app.input.clear();
             app.mode = Mode::SemanticSearch(SearchState::Typing);
+        }
+        KeyCode::Enter => {
+            if app.selected_memory().is_some() {
+                app.mode = Mode::View;
+            }
         }
         _ => {}
     }

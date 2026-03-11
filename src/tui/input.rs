@@ -10,5 +10,6 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         Mode::Delete => views::delete::handle_key(app, key),
         // All SemanticSearch states (Typing, Loading, Results) handled by search view
         Mode::SemanticSearch(_) => views::search::handle_key(app, key),
+        Mode::View => views::thought::handle_key(app, key),
     }
 }

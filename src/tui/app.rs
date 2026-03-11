@@ -21,6 +21,7 @@ pub enum Mode {
     Add,
     Delete,
     SemanticSearch(SearchState),
+    View,
 }
 
 pub struct App {

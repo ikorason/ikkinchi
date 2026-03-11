@@ -19,5 +19,9 @@ pub fn render(app: &App, frame: &mut Frame) {
             views::list::render(app, frame, area);
             views::search::render(app, frame, area);
         }
+        Mode::View => {
+            views::list::render(app, frame, area);
+            views::thought::render(app, frame, area);
+        }
     }
 }
