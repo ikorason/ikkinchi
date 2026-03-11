@@ -45,7 +45,6 @@ ikkinchi init
 
 ```bash
 ikkinchi add "what do fish think about all day?"
-ikkinchi add "showers are where I rehearse arguments that will never happen and also solve problems I don't currently have"
 ikkinchi add "There is a @swc/react-compiler package but no documentation"
 ```
 
@@ -54,7 +53,7 @@ Each thought is appended to a daily markdown file (`~/.ikkinchi/memories/2026-03
 **Search semantically — not just by keyword:**
 
 ```bash
-$ ikkinchi search "reactjs"
+$ ikkinchi search "work"
   1  2026-03-10/19:54:08  There is a @swc/react-compiler package but no documentation
   ...
 ```
