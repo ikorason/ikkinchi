@@ -252,10 +252,6 @@ mod tests {
         ])
     }
 
-    fn search_app() -> App {
-        two_item_app()
-    }
-
     #[test]
     fn test_typing_updates_input() {
         let mut app = two_item_app();
@@ -321,7 +317,7 @@ mod tests {
 
     #[test]
     fn test_esc_while_loading_returns_to_list() {
-        let mut app = search_app();
+        let mut app = two_item_app();
         app.mode = Mode::SemanticSearch(SearchState::Loading);
         handle_key(&mut app, key(KeyCode::Esc));
         assert!(matches!(app.mode, Mode::List));
