@@ -9,8 +9,15 @@ use ratatui::{
 };
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
+    // When the View dialog is open, show the list as if we're still in the originating mode
+    let display_mode = if matches!(&app.mode, Mode::View) {
+        &app.prev_mode
+    } else {
+        &app.mode
+    };
+
     let is_filtered = matches!(
-        &app.mode,
+        display_mode,
         Mode::FuzzyFilter | Mode::SemanticSearch(SearchState::Results)
     );
 
@@ -49,7 +56,7 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(block, area);
 
     // In FuzzyFilter mode: allocate 1 line for input bar at top
-    let (input_area, list_area) = if matches!(&app.mode, Mode::FuzzyFilter) {
+    let (input_area, list_area) = if matches!(display_mode, Mode::FuzzyFilter) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -87,8 +94,9 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .iter()
         .enumerate()
         .map(|(i, memory)| {
-            // Available width: total - borders(2) - prefix(2) - index(3) - gap(2) - id(19) - gap(2)
-            let text_max = (area.width as usize).saturating_sub(30).max(10);
+            // list_area has no borders; prefix = "> " + index(3) + "  " + id(19) + "  " = 28 chars
+            // subtract 1 more so the "…" character fits without being clipped
+            let text_max = (list_area.width as usize).saturating_sub(29).max(1);
             let text_display = if memory.text.chars().count() > text_max {
                 let truncated: String = memory.text.chars().take(text_max).collect();
                 format!("{}…", truncated)
