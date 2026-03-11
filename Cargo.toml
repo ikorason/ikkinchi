@@ -1,6 +1,6 @@
 [package]
 name = "ikkinchi"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "Your second brain — a zero-friction CLI for capturing and retrieving thoughts"
 repository = "https://github.com/ikorason/ikkinchi"
