@@ -3,7 +3,7 @@ pub mod input;
 pub mod ui;
 pub mod views;
 
-use app::{App, SearchResult};
+use app::{App, Mode, SearchResult, SearchState};
 use crate::store::Store;
 use std::time::Duration;
 use crossterm::event::{self, KeyEventKind};
@@ -36,8 +36,6 @@ async fn event_loop(
 
         // Poll async search results
         if let Some(ref mut rx) = app.search_rx {
-            use app::SearchState;
-            use app::Mode;
             use tokio::sync::mpsc::error::TryRecvError;
             match rx.try_recv() {
                 Ok(SearchResult::Ok(results)) => {
