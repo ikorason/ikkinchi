@@ -23,5 +23,9 @@ pub fn render(app: &App, frame: &mut Frame) {
             views::list::render(app, frame, area);
             views::thought::render(app, frame, area);
         }
+        Mode::TagFilter => {
+            views::list::render(app, frame, area);
+            // tags modal rendered in Task 14
+        }
     }
 }
