@@ -129,6 +129,43 @@ impl Store {
         write_file(&file_path, &memories)
     }
 
+    pub fn add_tags(&self, id: &str, new_tags: &[String]) -> anyhow::Result<()> {
+        let (date, time) = parse_id(id)?;
+        let file_path = self.memories_dir.join(format!("{}.md", date));
+        anyhow::ensure!(file_path.exists(), "Memory not found: {}", id);
+        let content = std::fs::read_to_string(&file_path)?;
+        let mut memories = parse_file(&date, &content);
+        let entry = memories
+            .iter_mut()
+            .find(|m| m.time == time)
+            .ok_or_else(|| anyhow::anyhow!("Memory not found: {}", id))?;
+        let mut seen: std::collections::HashSet<String> = entry.tags.iter().cloned().collect();
+        for raw in new_tags {
+            if let Some(normalized) = normalize_tag(raw) {
+                if seen.insert(normalized.clone()) {
+                    entry.tags.push(normalized);
+                }
+            }
+        }
+        write_file(&file_path, &memories)
+    }
+
+    pub fn remove_tags(&self, id: &str, tags_to_remove: &[String]) -> anyhow::Result<()> {
+        let (date, time) = parse_id(id)?;
+        let file_path = self.memories_dir.join(format!("{}.md", date));
+        anyhow::ensure!(file_path.exists(), "Memory not found: {}", id);
+        let content = std::fs::read_to_string(&file_path)?;
+        let mut memories = parse_file(&date, &content);
+        let entry = memories
+            .iter_mut()
+            .find(|m| m.time == time)
+            .ok_or_else(|| anyhow::anyhow!("Memory not found: {}", id))?;
+        let to_remove: std::collections::HashSet<String> =
+            tags_to_remove.iter().filter_map(|t| normalize_tag(t)).collect();
+        entry.tags.retain(|t| !to_remove.contains(t));
+        write_file(&file_path, &memories)
+    }
+
     pub fn delete(&self, id: &str) -> anyhow::Result<()> {
         let (date, time) = parse_id(id)?;
         let file_path = self.memories_dir.join(format!("{}.md", date));
@@ -687,5 +724,88 @@ mod tests {
         let id = store.append("test", &tags).unwrap();
         let memory = store.get(&id).unwrap().unwrap();
         assert_eq!(memory.tags, vec!["rust"]); // deduped to one
+    }
+
+    #[test]
+    fn test_add_tags_to_existing_memory() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n\nborrow checker\n\n").unwrap();
+
+        store.add_tags("2026-03-11/14:32:05", &["rust".to_string(), "til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust", "til"]);
+        assert_eq!(m.text, "borrow checker");
+    }
+
+    #[test]
+    fn test_add_tags_merges_with_existing() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.add_tags("2026-03-11/14:32:05", &["til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert!(m.tags.contains(&"rust".to_string()));
+        assert!(m.tags.contains(&"til".to_string()));
+    }
+
+    #[test]
+    fn test_add_tags_duplicate_is_noop() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.add_tags("2026-03-11/14:32:05", &["rust".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust"]); // still only one
+    }
+
+    #[test]
+    fn test_add_tags_nonexistent_id_errors() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let result = store.add_tags("2026-03-11/99:99:99", &["rust".to_string()]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_remove_tags_from_memory() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust, #til\n\nborrow checker\n\n").unwrap();
+
+        store.remove_tags("2026-03-11/14:32:05", &["til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust"]);
+    }
+
+    #[test]
+    fn test_remove_nonexistent_tag_is_noop() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.remove_tags("2026-03-11/14:32:05", &["til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust"]); // unchanged
+    }
+
+    #[test]
+    fn test_remove_all_tags_leaves_empty_tags() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.remove_tags("2026-03-11/14:32:05", &["rust".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert!(m.tags.is_empty());
+        assert_eq!(m.text, "borrow checker"); // text preserved
     }
 }
