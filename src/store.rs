@@ -184,8 +184,8 @@ fn normalize_tag(raw: &str) -> Option<String> {
     let normalized: String = raw
         .chars()
         .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
-        .collect::<String>()
-        .to_lowercase();
+        .flat_map(|c| c.to_lowercase())
+        .collect();
     let tag = normalized.trim().to_string();
     if tag.is_empty() { None } else { Some(tag) }
 }
@@ -665,5 +665,27 @@ mod tests {
         let memory = store.get(&id).unwrap().unwrap();
         assert!(memory.tags.is_empty());
         assert_eq!(memory.text, "plain thought");
+    }
+
+    #[test]
+    fn test_write_file_round_trips_tags() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        let mut m = Memory::new("2026-03-11", "14:32:05", "borrow checker");
+        m.tags = vec!["rust".to_string(), "til".to_string()];
+        write_file(&file_path, &[m]).unwrap();
+        let memory = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(memory.tags, vec!["rust", "til"]);
+        assert_eq!(memory.text, "borrow checker");
+    }
+
+    #[test]
+    fn test_append_deduplicates_tags() {
+        let (_dir, store) = test_store();
+        let tags = vec!["rust".to_string(), "RUST".to_string(), "rust".to_string()];
+        let id = store.append("test", &tags).unwrap();
+        let memory = store.get(&id).unwrap().unwrap();
+        assert_eq!(memory.tags, vec!["rust"]); // deduped to one
     }
 }
