@@ -1,3 +1,4 @@
+use crate::cli::list::format_tag_block;
 use crate::tui::app::{App, Mode, SearchState};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -96,7 +97,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .map(|(i, memory)| {
             // list_area has no borders; prefix = "> " + index(3) + "  " + id(19) + "  " = 28 chars
             // subtract 1 more so the "…" character fits without being clipped
-            let text_max = (list_area.width as usize).saturating_sub(29).max(1);
+            let tag_block = format_tag_block(memory);
+            let tag_len = tag_block.chars().count();
+            let text_max = (list_area.width as usize)
+                .saturating_sub(29 + tag_len)
+                .max(1);
             let text_display = if memory.text.chars().count() > text_max {
                 let truncated: String = memory.text.chars().take(text_max).collect();
                 format!("{}…", truncated)
@@ -105,11 +110,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             };
 
             if i == app.selected {
-                let line = format!("> {:>3}  {}  {}", i + 1, memory.id, text_display);
+                let line = format!("> {:>3}  {}  {}{}", i + 1, memory.id, tag_block, text_display);
                 ListItem::new(line)
                     .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
             } else {
-                let line = format!("  {:>3}  {}  {}", i + 1, memory.id, text_display);
+                let line = format!("  {:>3}  {}  {}{}", i + 1, memory.id, tag_block, text_display);
                 ListItem::new(line)
             }
         })
@@ -366,5 +371,20 @@ mod tests {
         assert_eq!(app.selected, 1);
         handle_fuzzy_key(&mut app, key(KeyCode::Char('k')));
         assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn test_list_row_tag_block_empty() {
+        use crate::store::Memory;
+        let m = Memory::new("2026-03-11", "10:00:00", "borrow checker");
+        assert_eq!(crate::cli::list::format_tag_block(&m), "");
+    }
+
+    #[test]
+    fn test_list_row_tag_block_shows_tags() {
+        use crate::store::Memory;
+        let mut m = Memory::new("2026-03-11", "10:00:00", "borrow checker");
+        m.tags = vec!["rust".to_string(), "til".to_string()];
+        assert_eq!(crate::cli::list::format_tag_block(&m), "[#rust, #til] ");
     }
 }
