@@ -154,6 +154,7 @@ fn write_file(path: &PathBuf, memories: &[Memory]) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[must_use]
 pub fn parse_tag_line(line: &str) -> Vec<String> {
     let trimmed = line.trim();
     if !trimmed.starts_with('#') {
@@ -169,7 +170,8 @@ pub fn parse_tag_line(line: &str) -> Vec<String> {
             .collect::<String>()
             .to_lowercase();
         let tag = normalized.trim().to_string();
-        if !tag.is_empty() && seen.insert(tag.clone()) {
+        if !tag.is_empty() && !seen.contains(tag.as_str()) {
+            seen.insert(tag.clone());
             tags.push(tag);
         }
     }
@@ -230,6 +232,14 @@ fn parse_file(date: &str, content: &str) -> Vec<Memory> {
 /// preceding blank line). A line is a tag line if and only if `parse_tag_line`
 /// returns a non-empty result. Body lines after the tag line (or all body lines
 /// if no tag line) form the text.
+///
+/// # Heading/tag ambiguity
+///
+/// Because the first line after the header is always checked as a tag candidate,
+/// a markdown heading like `# intro` placed immediately after `## HH:MM:SS`
+/// (with no blank line in between) **is** treated as a tag line yielding
+/// `["intro"]`. This is intentional spec behavior. To include a markdown heading
+/// as body text, separate it from the timestamp header with a blank line.
 fn build_memory(date: &str, time: &str, body_lines: &[&str]) -> Memory {
     let mut start = 0;
 
@@ -516,14 +526,10 @@ mod tests {
         assert_eq!(parse_tag_line("#rust/lang"), vec!["rustlang"]);
     }
 
-    fn parse_file_pub(date: &str, content: &str) -> Vec<Memory> {
-        parse_file(date, content)
-    }
-
     #[test]
     fn test_parse_file_with_tag_line() {
         let content = "## 14:32:05\n#rust, #til\n\nborrow checker is tricky\n\n";
-        let memories = parse_file_pub("2026-03-11", content);
+        let memories = parse_file("2026-03-11", content);
         assert_eq!(memories.len(), 1);
         assert_eq!(memories[0].tags, vec!["rust", "til"]);
         assert_eq!(memories[0].text, "borrow checker is tricky");
@@ -532,7 +538,7 @@ mod tests {
     #[test]
     fn test_parse_file_without_tag_line_has_empty_tags() {
         let content = "## 15:00:00\n\nwhat do fish think about\n\n";
-        let memories = parse_file_pub("2026-03-11", content);
+        let memories = parse_file("2026-03-11", content);
         assert_eq!(memories.len(), 1);
         assert!(memories[0].tags.is_empty());
         assert_eq!(memories[0].text, "what do fish think about");
@@ -541,7 +547,7 @@ mod tests {
     #[test]
     fn test_parse_file_multiword_tag() {
         let content = "## 16:00:00\n#shower thought\n\nwhy is water wet\n\n";
-        let memories = parse_file_pub("2026-03-11", content);
+        let memories = parse_file("2026-03-11", content);
         assert_eq!(memories[0].tags, vec!["shower thought"]);
         assert_eq!(memories[0].text, "why is water wet");
     }
@@ -550,7 +556,7 @@ mod tests {
     fn test_parse_file_hash_in_body_not_treated_as_tag_line() {
         // A markdown heading in the body should NOT be parsed as a tag line
         let content = "## 10:00:00\n\n# not a tag\n\nsome text\n\n";
-        let memories = parse_file_pub("2026-03-11", content);
+        let memories = parse_file("2026-03-11", content);
         assert_eq!(memories.len(), 1);
         assert!(memories[0].tags.is_empty());
         assert!(memories[0].text.contains("# not a tag"));
@@ -559,7 +565,7 @@ mod tests {
     #[test]
     fn test_parse_file_two_entries_both_tagged() {
         let content = "## 09:00:00\n#morning\n\nfirst\n\n## 10:00:00\n#rust\n\nsecond\n\n";
-        let memories = parse_file_pub("2026-03-11", content);
+        let memories = parse_file("2026-03-11", content);
         assert_eq!(memories.len(), 2);
         assert_eq!(memories[0].tags, vec!["morning"]);
         assert_eq!(memories[1].tags, vec!["rust"]);
@@ -572,5 +578,16 @@ mod tests {
         assert_eq!(memories.len(), 1);
         assert_eq!(memories[0].tags, vec!["rust"]);
         assert_eq!(memories[0].text, "borrow checker");
+    }
+
+    #[test]
+    fn test_parse_file_heading_without_blank_immediately_after_header_is_tag() {
+        // Per spec: the first line after the timestamp is always checked as a tag candidate.
+        // A markdown heading like "# intro" immediately after the header (no blank line)
+        // is treated as a tag line yielding ["intro"]. To avoid this, leave a blank line.
+        let content = "## 10:00:00\n# intro\n\nsome text\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories[0].tags, vec!["intro"]);
+        assert_eq!(memories[0].text, "some text");
     }
 }
