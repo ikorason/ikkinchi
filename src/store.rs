@@ -154,6 +154,28 @@ fn write_file(path: &PathBuf, memories: &[Memory]) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn parse_tag_line(line: &str) -> Vec<String> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('#') {
+        return vec![];
+    }
+    let mut tags = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for part in trimmed.split(',') {
+        let raw = part.trim().strip_prefix('#').unwrap_or("").trim();
+        let normalized: String = raw
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
+            .collect::<String>()
+            .to_lowercase();
+        let tag = normalized.trim().to_string();
+        if !tag.is_empty() && seen.insert(tag.clone()) {
+            tags.push(tag);
+        }
+    }
+    tags
+}
+
 fn parse_time_header(line: &str) -> Option<String> {
     let rest = line.strip_prefix("## ")?;
     // Accept HH:MM:SS (new format) or HH:MM (backward compat for existing files)
@@ -401,5 +423,65 @@ mod tests {
     fn test_memory_new_has_empty_tags_by_default() {
         let m = Memory::new("2026-03-10", "14:32:05", "hello");
         assert!(m.tags.is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_empty() {
+        assert!(parse_tag_line("").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_no_hash() {
+        assert!(parse_tag_line("no hash prefix").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_single_tag() {
+        assert_eq!(parse_tag_line("#rust"), vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_multiple_tags() {
+        assert_eq!(parse_tag_line("#rust, #til"), vec!["rust", "til"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_multiword_tag() {
+        assert_eq!(parse_tag_line("#shower thought, #rust"), vec!["shower thought", "rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_dedup_and_lowercase() {
+        assert_eq!(parse_tag_line("#Rust, #RUST, #rust"), vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_whitespace_trimmed() {
+        assert_eq!(parse_tag_line("  #rust  ,  #til  "), vec!["rust", "til"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_bare_hash_ignored() {
+        assert!(parse_tag_line("#").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_empty_tag_part_skipped() {
+        assert_eq!(parse_tag_line("#, #rust"), vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_plain_text_is_not_tag_line() {
+        assert!(parse_tag_line("just some text").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_strips_underscore() {
+        assert_eq!(parse_tag_line("#rust_lang"), vec!["rustlang"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_strips_slash() {
+        assert_eq!(parse_tag_line("#rust/lang"), vec!["rustlang"]);
     }
 }
