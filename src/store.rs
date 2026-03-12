@@ -227,25 +227,18 @@ fn parse_file(date: &str, content: &str) -> Vec<Memory> {
 
 /// Build a Memory from raw body lines, extracting the tag line if present.
 /// The tag line must be the very first line after the timestamp header (no
-/// preceding blank line). Body lines after the tag line (or all body lines
+/// preceding blank line). A line is a tag line if and only if `parse_tag_line`
+/// returns a non-empty result. Body lines after the tag line (or all body lines
 /// if no tag line) form the text.
 fn build_memory(date: &str, time: &str, body_lines: &[&str]) -> Memory {
     let mut start = 0;
 
-    // Check if the very first line is a tag line (no blank line before it).
-    // A tag line starts with '#' immediately followed by a non-space character,
-    // distinguishing it from markdown headings like "# Heading".
+    // Delegate tag-line detection entirely to parse_tag_line.
     let tags = if let Some(first) = body_lines.first() {
-        let is_tag_line = first.starts_with('#')
-            && first.chars().nth(1).map_or(false, |c| c != ' ');
-        if is_tag_line {
-            let parsed = parse_tag_line(first);
-            if !parsed.is_empty() {
-                start = 1; // consume tag line
-                parsed
-            } else {
-                vec![]
-            }
+        let candidate_tags = parse_tag_line(first);
+        if !candidate_tags.is_empty() {
+            start = 1; // consume tag line
+            candidate_tags
         } else {
             vec![]
         }
@@ -570,5 +563,14 @@ mod tests {
         assert_eq!(memories.len(), 2);
         assert_eq!(memories[0].tags, vec!["morning"]);
         assert_eq!(memories[1].tags, vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_file_space_after_hash_is_tag_line() {
+        let content = "## 14:32:05\n# rust\n\nborrow checker\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert_eq!(memories[0].tags, vec!["rust"]);
+        assert_eq!(memories[0].text, "borrow checker");
     }
 }
