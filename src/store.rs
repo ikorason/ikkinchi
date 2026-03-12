@@ -7,6 +7,7 @@ pub struct Memory {
     pub date: String, // "2026-03-10"
     pub time: String, // "14:32:05"
     pub text: String,
+    pub tags: Vec<String>,
 }
 
 impl Memory {
@@ -16,6 +17,7 @@ impl Memory {
             date: date.to_string(),
             time: time.to_string(),
             text: text.to_string(),
+            tags: vec![],
         }
     }
 }
@@ -393,5 +395,11 @@ mod tests {
         let memory = store.get("2026-03-10/14:32").unwrap();
         assert!(memory.is_some());
         assert_eq!(memory.unwrap().text, "legacy entry");
+    }
+
+    #[test]
+    fn test_memory_new_has_empty_tags_by_default() {
+        let m = Memory::new("2026-03-10", "14:32:05", "hello");
+        assert!(m.tags.is_empty());
     }
 }
