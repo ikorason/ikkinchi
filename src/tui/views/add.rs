@@ -8,7 +8,7 @@ use ratatui::{
 };
 
 pub fn render(app: &App, frame: &mut Frame, area: Rect) {
-    let modal = centered_rect(60, 7, area);
+    let modal = centered_rect(60, 9, area);
     frame.render_widget(Clear, modal);
 
     let block = Block::default()
@@ -21,41 +21,74 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
-    // Split inner area: 1 line padding top, 1 line content, 1 line padding, 1 line hint
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
+            Constraint::Length(1), // top padding
+            Constraint::Length(1), // thought field
+            Constraint::Length(1), // gap
+            Constraint::Length(1), // tags field
+            Constraint::Length(1), // gap
+            Constraint::Length(1), // hint
+            Constraint::Length(1), // bottom padding
         ])
         .split(inner);
 
-    let content = format!("Thought: {}\u{2588}", app.input);
-    let content_widget = Paragraph::new(content)
-        .style(Style::default().fg(Color::White));
-    frame.render_widget(content_widget, chunks[1]);
+    let thought_cursor = if !app.add_focused_tags { "\u{2588}" } else { "" };
+    let thought_style = if !app.add_focused_tags {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let thought_content = format!("Thought: {}{}", app.input, thought_cursor);
+    frame.render_widget(
+        Paragraph::new(thought_content).style(thought_style),
+        chunks[1],
+    );
 
-    let hint = Paragraph::new("[Enter to save · Esc cancel]")
+    let tags_cursor = if app.add_focused_tags { "\u{2588}" } else { "" };
+    let tags_style = if app.add_focused_tags {
+        Style::default().fg(Color::White)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+    let tags_content = format!("Tags:    {}{}", app.add_tags_input, tags_cursor);
+    frame.render_widget(
+        Paragraph::new(tags_content).style(tags_style),
+        chunks[3],
+    );
+
+    let hint = Paragraph::new("[Tab switch field · Enter save · Esc cancel]")
         .style(Style::default().fg(Color::DarkGray))
         .alignment(Alignment::Center);
-    frame.render_widget(hint, chunks[3]);
+    frame.render_widget(hint, chunks[5]);
 }
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
     match key.code {
         KeyCode::Esc => {
             app.input.clear();
+            app.add_tags_input.clear();
+            app.add_focused_tags = false;
             app.mode = Mode::List;
+        }
+        KeyCode::Tab => {
+            app.add_focused_tags = !app.add_focused_tags;
         }
         KeyCode::Enter => {
             let text = app.input.trim().to_string();
             if text.is_empty() {
                 return;
             }
+            let tags: Vec<String> = app
+                .add_tags_input
+                .split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect();
+
             let store = crate::store::Store::from_config();
-            match store.append(&text, &[]) {
+            match store.append(&text, &tags) {
                 Ok(id) => {
                     let text_clone = text.clone();
                     let id_clone = id.clone();
@@ -72,6 +105,8 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                         }
                     });
                     app.input.clear();
+                    app.add_tags_input.clear();
+                    app.add_focused_tags = false;
                     let _ = app.reload_memories();
                     app.mode = Mode::List;
                 }
@@ -81,10 +116,18 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Backspace => {
-            app.input.pop();
+            if app.add_focused_tags {
+                app.add_tags_input.pop();
+            } else {
+                app.input.pop();
+            }
         }
         KeyCode::Char(c) => {
-            app.input.push(c);
+            if app.add_focused_tags {
+                app.add_tags_input.push(c);
+            } else {
+                app.input.push(c);
+            }
         }
         _ => {}
     }
@@ -128,30 +171,67 @@ mod tests {
     }
 
     #[test]
-    fn test_typing_updates_input() {
+    fn test_typing_updates_thought_input() {
         let mut app = empty_app();
         app.mode = Mode::Add;
         handle_key(&mut app, key(KeyCode::Char('h')));
         handle_key(&mut app, key(KeyCode::Char('i')));
         assert_eq!(app.input, "hi");
+        assert!(app.add_tags_input.is_empty());
     }
 
     #[test]
-    fn test_backspace_removes_char() {
+    fn test_tab_switches_to_tags_field() {
+        let mut app = empty_app();
+        app.mode = Mode::Add;
+        assert!(!app.add_focused_tags);
+        handle_key(&mut app, key(KeyCode::Tab));
+        assert!(app.add_focused_tags);
+    }
+
+    #[test]
+    fn test_typing_in_tags_field_updates_tags_input() {
+        let mut app = empty_app();
+        app.mode = Mode::Add;
+        app.add_focused_tags = true;
+        handle_key(&mut app, key(KeyCode::Char('r')));
+        handle_key(&mut app, key(KeyCode::Char('u')));
+        handle_key(&mut app, key(KeyCode::Char('s')));
+        handle_key(&mut app, key(KeyCode::Char('t')));
+        assert_eq!(app.add_tags_input, "rust");
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn test_backspace_removes_from_active_field() {
         let mut app = empty_app();
         app.input = "hello".to_string();
+        app.add_tags_input = "rust".to_string();
+
+        // backspace on thought field
         handle_key(&mut app, key(KeyCode::Backspace));
+        assert_eq!(app.input, "hell");
+        assert_eq!(app.add_tags_input, "rust");
+
+        // switch to tags and backspace
+        app.add_focused_tags = true;
+        handle_key(&mut app, key(KeyCode::Backspace));
+        assert_eq!(app.add_tags_input, "rus");
         assert_eq!(app.input, "hell");
     }
 
     #[test]
-    fn test_esc_clears_input_and_returns_to_list() {
+    fn test_esc_clears_both_fields_and_returns_to_list() {
         let mut app = empty_app();
         app.mode = Mode::Add;
         app.input = "draft".to_string();
+        app.add_tags_input = "rust".to_string();
+        app.add_focused_tags = true;
         handle_key(&mut app, key(KeyCode::Esc));
         assert_eq!(app.mode, Mode::List);
         assert!(app.input.is_empty());
+        assert!(app.add_tags_input.is_empty());
+        assert!(!app.add_focused_tags);
     }
 
     #[test]

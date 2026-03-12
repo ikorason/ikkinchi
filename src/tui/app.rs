@@ -37,6 +37,8 @@ pub struct App {
     pub should_quit: bool,
     pub active_tag_filter: Option<String>,
     pub tag_picker_selected: usize,
+    pub add_tags_input: String,
+    pub add_focused_tags: bool,
 }
 
 impl App {
@@ -54,6 +56,8 @@ impl App {
             should_quit: false,
             active_tag_filter: None,
             tag_picker_selected: 0,
+            add_tags_input: String::new(),
+            add_focused_tags: false,
         }
     }
 
