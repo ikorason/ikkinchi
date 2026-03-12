@@ -203,9 +203,9 @@ fn parse_file(date: &str, content: &str) -> Vec<Memory> {
     for line in content.lines() {
         if let Some(time) = parse_time_header(line) {
             if let Some(ref t) = current_time {
-                let text = current_body.join("\n").trim().to_string();
-                if !text.is_empty() {
-                    memories.push(Memory::new(date, t, &text));
+                let memory = build_memory(date, t, &current_body);
+                if !memory.text.is_empty() {
+                    memories.push(memory);
                 }
             }
             current_time = Some(time);
@@ -216,13 +216,51 @@ fn parse_file(date: &str, content: &str) -> Vec<Memory> {
     }
 
     if let Some(ref t) = current_time {
-        let text = current_body.join("\n").trim().to_string();
-        if !text.is_empty() {
-            memories.push(Memory::new(date, t, &text));
+        let memory = build_memory(date, t, &current_body);
+        if !memory.text.is_empty() {
+            memories.push(memory);
         }
     }
 
     memories
+}
+
+/// Build a Memory from raw body lines, extracting the tag line if present.
+/// The tag line must be the very first line after the timestamp header (no
+/// preceding blank line). Body lines after the tag line (or all body lines
+/// if no tag line) form the text.
+fn build_memory(date: &str, time: &str, body_lines: &[&str]) -> Memory {
+    let mut start = 0;
+
+    // Check if the very first line is a tag line (no blank line before it).
+    // A tag line starts with '#' immediately followed by a non-space character,
+    // distinguishing it from markdown headings like "# Heading".
+    let tags = if let Some(first) = body_lines.first() {
+        let is_tag_line = first.starts_with('#')
+            && first.chars().nth(1).map_or(false, |c| c != ' ');
+        if is_tag_line {
+            let parsed = parse_tag_line(first);
+            if !parsed.is_empty() {
+                start = 1; // consume tag line
+                parsed
+            } else {
+                vec![]
+            }
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    let text = body_lines[start..]
+        .join("\n")
+        .trim()
+        .to_string();
+
+    let mut m = Memory::new(date, time, &text);
+    m.tags = tags;
+    m
 }
 
 #[cfg(test)]
@@ -483,5 +521,54 @@ mod tests {
     #[test]
     fn test_parse_tag_line_strips_slash() {
         assert_eq!(parse_tag_line("#rust/lang"), vec!["rustlang"]);
+    }
+
+    fn parse_file_pub(date: &str, content: &str) -> Vec<Memory> {
+        parse_file(date, content)
+    }
+
+    #[test]
+    fn test_parse_file_with_tag_line() {
+        let content = "## 14:32:05\n#rust, #til\n\nborrow checker is tricky\n\n";
+        let memories = parse_file_pub("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert_eq!(memories[0].tags, vec!["rust", "til"]);
+        assert_eq!(memories[0].text, "borrow checker is tricky");
+    }
+
+    #[test]
+    fn test_parse_file_without_tag_line_has_empty_tags() {
+        let content = "## 15:00:00\n\nwhat do fish think about\n\n";
+        let memories = parse_file_pub("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert!(memories[0].tags.is_empty());
+        assert_eq!(memories[0].text, "what do fish think about");
+    }
+
+    #[test]
+    fn test_parse_file_multiword_tag() {
+        let content = "## 16:00:00\n#shower thought\n\nwhy is water wet\n\n";
+        let memories = parse_file_pub("2026-03-11", content);
+        assert_eq!(memories[0].tags, vec!["shower thought"]);
+        assert_eq!(memories[0].text, "why is water wet");
+    }
+
+    #[test]
+    fn test_parse_file_hash_in_body_not_treated_as_tag_line() {
+        // A markdown heading in the body should NOT be parsed as a tag line
+        let content = "## 10:00:00\n\n# not a tag\n\nsome text\n\n";
+        let memories = parse_file_pub("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert!(memories[0].tags.is_empty());
+        assert!(memories[0].text.contains("# not a tag"));
+    }
+
+    #[test]
+    fn test_parse_file_two_entries_both_tagged() {
+        let content = "## 09:00:00\n#morning\n\nfirst\n\n## 10:00:00\n#rust\n\nsecond\n\n";
+        let memories = parse_file_pub("2026-03-11", content);
+        assert_eq!(memories.len(), 2);
+        assert_eq!(memories[0].tags, vec!["morning"]);
+        assert_eq!(memories[1].tags, vec!["rust"]);
     }
 }
