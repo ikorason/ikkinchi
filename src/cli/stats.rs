@@ -8,6 +8,7 @@ pub struct Stats {
     pub days: usize,
     pub oldest: String,
     pub newest: String,
+    pub distinct_tags: usize,
 }
 
 pub fn compute_stats(store: &Store) -> Result<Option<Stats>> {
@@ -18,11 +19,14 @@ pub fn compute_stats(store: &Store) -> Result<Option<Stats>> {
     let days: HashSet<&str> = all.iter().map(|m| m.date.as_str()).collect();
     let oldest = all.iter().map(|m| m.date.as_str()).min().unwrap().to_string();
     let newest = all.iter().map(|m| m.date.as_str()).max().unwrap().to_string();
+    let distinct_tags: std::collections::HashSet<&str> =
+        all.iter().flat_map(|m| m.tags.iter().map(|t| t.as_str())).collect();
     Ok(Some(Stats {
         total: all.len(),
         days: days.len(),
         oldest,
         newest,
+        distinct_tags: distinct_tags.len(),
     }))
 }
 
@@ -43,6 +47,7 @@ pub async fn run() -> Result<()> {
                 Err(_) => "unavailable".to_string(),
             };
             println!("Vectors:  {:>10}", vector_count);
+            println!("Tags:     {:>10}", s.distinct_tags);
         }
     }
     Ok(())
@@ -100,5 +105,17 @@ mod tests {
         assert_eq!(stats.days, 2);
         assert_eq!(stats.oldest, "2026-03-09");
         assert_eq!(stats.newest, "2026-03-10");
+    }
+
+    #[test]
+    fn test_stats_distinct_tag_count() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        std::fs::write(
+            store.memories_dir.join("2026-03-10.md"),
+            "## 10:00:00\n#rust, #til\n\nhello\n\n## 11:00:00\n#rust\n\nworld\n\n",
+        ).unwrap();
+        let stats = compute_stats(&store).unwrap().unwrap();
+        assert_eq!(stats.distinct_tags, 2); // rust, til
     }
 }
