@@ -55,7 +55,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
                 return;
             }
             let store = crate::store::Store::from_config();
-            match store.append(&text) {
+            match store.append(&text, &[]) {
                 Ok(id) => {
                     let text_clone = text.clone();
                     let id_clone = id.clone();

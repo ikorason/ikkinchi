@@ -35,7 +35,7 @@ impl Store {
         Self::new(crate::config::memories_dir())
     }
 
-    pub fn append(&self, text: &str) -> anyhow::Result<String> {
+    pub fn append(&self, text: &str, tags: &[String]) -> anyhow::Result<String> {
         let now = chrono::Local::now();
         let date = now.format("%Y-%m-%d").to_string();
         let time = now.format("%H:%M:%S").to_string();
@@ -44,7 +44,22 @@ impl Store {
         let file_path = self.memories_dir.join(format!("{}.md", date));
 
         let text = text.trim();
-        let entry = format!("## {}\n\n{}\n\n", time, text);
+        let mut entry = format!("## {}\n", time);
+
+        // Normalize tags, preserve input order, deduplicate
+        let mut seen = std::collections::HashSet::new();
+        let ordered: Vec<String> = tags
+            .iter()
+            .filter_map(|t| normalize_tag(t))
+            .filter(|t| seen.insert(t.clone()))
+            .collect();
+
+        if !ordered.is_empty() {
+            let tag_line = ordered.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(", ");
+            entry.push_str(&format!("{}\n", tag_line));
+        }
+        entry.push_str(&format!("\n{}\n\n", text));
+
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -148,10 +163,31 @@ fn parse_id(id: &str) -> anyhow::Result<(String, String)> {
 fn write_file(path: &PathBuf, memories: &[Memory]) -> anyhow::Result<()> {
     let mut content = String::new();
     for m in memories {
-        content.push_str(&format!("## {}\n\n{}\n\n", m.time, m.text));
+        content.push_str(&format!("## {}\n", m.time));
+        if !m.tags.is_empty() {
+            let tag_line = m.tags
+                .iter()
+                .map(|t| format!("#{}", t))
+                .collect::<Vec<_>>()
+                .join(", ");
+            content.push_str(&format!("{}\n", tag_line));
+        }
+        content.push_str(&format!("\n{}\n\n", m.text));
     }
     std::fs::write(path, content)?;
     Ok(())
+}
+
+/// Normalize a single tag string: lowercase, strip disallowed chars, trim.
+/// Returns `None` if the result is empty.
+fn normalize_tag(raw: &str) -> Option<String> {
+    let normalized: String = raw
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
+        .collect::<String>()
+        .to_lowercase();
+    let tag = normalized.trim().to_string();
+    if tag.is_empty() { None } else { Some(tag) }
 }
 
 #[must_use]
@@ -164,15 +200,11 @@ pub fn parse_tag_line(line: &str) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
     for part in trimmed.split(',') {
         let raw = part.trim().strip_prefix('#').unwrap_or("").trim();
-        let normalized: String = raw
-            .chars()
-            .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
-            .collect::<String>()
-            .to_lowercase();
-        let tag = normalized.trim().to_string();
-        if !tag.is_empty() && !seen.contains(tag.as_str()) {
-            seen.insert(tag.clone());
-            tags.push(tag);
+        if let Some(tag) = normalize_tag(raw) {
+            if !seen.contains(tag.as_str()) {
+                seen.insert(tag.clone());
+                tags.push(tag);
+            }
         }
     }
     tags
@@ -295,7 +327,7 @@ mod tests {
     #[test]
     fn test_append_creates_file_with_correct_format() {
         let (_dir, store) = test_store();
-        let id = store.append("hello world").unwrap();
+        let id = store.append("hello world", &[]).unwrap();
 
         // id must be "YYYY-MM-DD/HH:MM:SS"
         let parts: Vec<&str> = id.splitn(2, '/').collect();
@@ -314,8 +346,8 @@ mod tests {
     #[test]
     fn test_append_twice_same_file_keeps_both() {
         let (_dir, store) = test_store();
-        store.append("first").unwrap();
-        store.append("second").unwrap();
+        store.append("first", &[]).unwrap();
+        store.append("second", &[]).unwrap();
 
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let file_path = store.memories_dir.join(format!("{}.md", today));
@@ -589,5 +621,49 @@ mod tests {
         let memories = parse_file("2026-03-11", content);
         assert_eq!(memories[0].tags, vec!["intro"]);
         assert_eq!(memories[0].text, "some text");
+    }
+
+    #[test]
+    fn test_write_file_emits_tag_line() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        let mut m = Memory::new("2026-03-11", "14:32:05", "borrow checker");
+        m.tags = vec!["rust".to_string(), "til".to_string()];
+        write_file(&file_path, &[m]).unwrap();
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("#rust, #til"), "tag line missing: {}", content);
+    }
+
+    #[test]
+    fn test_write_file_no_tag_line_when_empty() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        let m = Memory::new("2026-03-11", "14:32:05", "no tags");
+        write_file(&file_path, &[m]).unwrap();
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        // No tag line should appear; the only '#' chars are in the '## HH:MM:SS' header
+        assert!(!content.lines().any(|l| l.starts_with('#') && !l.starts_with("##")),
+            "unexpected tag line in content: {}", content);
+    }
+
+    #[test]
+    fn test_append_with_tags_writes_tag_line() {
+        let (_dir, store) = test_store();
+        let tags = vec!["rust".to_string(), "til".to_string()];
+        let id = store.append("learned lifetimes", &tags).unwrap();
+        let memory = store.get(&id).unwrap().unwrap();
+        assert_eq!(memory.tags, vec!["rust", "til"]);
+        assert_eq!(memory.text, "learned lifetimes");
+    }
+
+    #[test]
+    fn test_append_without_tags_backward_compat() {
+        let (_dir, store) = test_store();
+        let id = store.append("plain thought", &[]).unwrap();
+        let memory = store.get(&id).unwrap().unwrap();
+        assert!(memory.tags.is_empty());
+        assert_eq!(memory.text, "plain thought");
     }
 }
