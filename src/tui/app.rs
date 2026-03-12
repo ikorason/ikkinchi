@@ -22,6 +22,7 @@ pub enum Mode {
     Delete,
     SemanticSearch(SearchState),
     View,
+    TagFilter,
 }
 
 pub struct App {
@@ -34,6 +35,10 @@ pub struct App {
     pub search_rx: Option<Receiver<SearchResult>>,
     pub error: Option<String>,
     pub should_quit: bool,
+    pub active_tag_filter: Option<String>,
+    pub tag_picker_selected: usize,
+    pub add_tags_input: String,
+    pub add_focused_tags: bool,
 }
 
 impl App {
@@ -49,6 +54,10 @@ impl App {
             search_rx: None,
             error: None,
             should_quit: false,
+            active_tag_filter: None,
+            tag_picker_selected: 0,
+            add_tags_input: String::new(),
+            add_focused_tags: false,
         }
     }
 
@@ -176,5 +185,19 @@ mod tests {
     fn test_app_selected_memory_returns_none_when_empty() {
         let app = App::from_memories(vec![]);
         assert!(app.selected_memory().is_none());
+    }
+
+    #[test]
+    fn test_app_has_no_active_tag_filter_by_default() {
+        let app = App::from_memories(vec![make_memory("2026-03-10/14:00:00", "first")]);
+        assert!(app.active_tag_filter.is_none());
+        assert_eq!(app.tag_picker_selected, 0);
+    }
+
+    #[test]
+    fn test_tag_filter_mode_exists() {
+        let mut app = App::from_memories(vec![make_memory("2026-03-10/14:00:00", "first")]);
+        app.mode = Mode::TagFilter;
+        assert_eq!(app.mode, Mode::TagFilter);
     }
 }

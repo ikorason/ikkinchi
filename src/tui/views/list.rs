@@ -1,3 +1,4 @@
+use crate::cli::list::format_tag_block;
 use crate::tui::app::{App, Mode, SearchState};
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -21,7 +22,13 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         Mode::FuzzyFilter | Mode::SemanticSearch(SearchState::Results)
     );
 
-    let (border_color, border_type, title_right) = if is_filtered {
+    let (border_color, border_type, title_right) = if let Some(tag) = &app.active_tag_filter {
+        (
+            Color::Cyan,
+            BorderType::Double,
+            format!(" [tag: #{}] ", tag),
+        )
+    } else if is_filtered {
         let query = if app.input.chars().count() > 20 {
             let truncated: String = app.input.chars().take(20).collect();
             format!("{}…", truncated)
@@ -37,11 +44,14 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         (Color::Gray, BorderType::Plain, " [List] ".to_string())
     };
 
-    let footer_text = if is_filtered {
+    let footer_text = if let Some(tag) = &app.active_tag_filter {
+        let count = app.visible.len();
+        format!(" Esc to return · {} results · tag: #{} ", count, tag)
+    } else if is_filtered {
         let count = app.visible.len();
         format!(" Esc to return · {} results ", count)
     } else {
-        " / fuzzy · s search · ↵ view · a add · d del · q ".to_string()
+        " / fuzzy · s search · t tag · ↵ view · a add · d del · q ".to_string()
     };
 
     let block = Block::default()
@@ -96,7 +106,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
         .map(|(i, memory)| {
             // list_area has no borders; prefix = "> " + index(3) + "  " + id(19) + "  " = 28 chars
             // subtract 1 more so the "…" character fits without being clipped
-            let text_max = (list_area.width as usize).saturating_sub(29).max(1);
+            let tag_block = format_tag_block(memory);
+            let tag_len = tag_block.chars().count();
+            let text_max = (list_area.width as usize)
+                .saturating_sub(29 + tag_len)
+                .max(1);
             let text_display = if memory.text.chars().count() > text_max {
                 let truncated: String = memory.text.chars().take(text_max).collect();
                 format!("{}…", truncated)
@@ -105,11 +119,11 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
             };
 
             if i == app.selected {
-                let line = format!("> {:>3}  {}  {}", i + 1, memory.id, text_display);
+                let line = format!("> {:>3}  {}  {}{}", i + 1, memory.id, tag_block, text_display);
                 ListItem::new(line)
                     .style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD))
             } else {
-                let line = format!("  {:>3}  {}  {}", i + 1, memory.id, text_display);
+                let line = format!("  {:>3}  {}  {}{}", i + 1, memory.id, tag_block, text_display);
                 ListItem::new(line)
             }
         })
@@ -141,6 +155,17 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         KeyCode::Char('s') => {
             app.input.clear();
             app.mode = Mode::SemanticSearch(SearchState::Typing);
+        }
+        KeyCode::Char('t') => {
+            app.tag_picker_selected = 0;
+            app.mode = Mode::TagFilter;
+        }
+        KeyCode::Esc => {
+            if app.active_tag_filter.is_some() {
+                app.active_tag_filter = None;
+                app.visible = app.memories.clone();
+                app.selected = 0;
+            }
         }
         KeyCode::Enter => {
             if app.selected_memory().is_some() {
@@ -365,6 +390,43 @@ mod tests {
         handle_fuzzy_key(&mut app, key(KeyCode::Char('j')));
         assert_eq!(app.selected, 1);
         handle_fuzzy_key(&mut app, key(KeyCode::Char('k')));
+        assert_eq!(app.selected, 0);
+    }
+
+    #[test]
+    fn test_list_row_tag_block_empty() {
+        use crate::store::Memory;
+        let m = Memory::new("2026-03-11", "10:00:00", "borrow checker");
+        assert_eq!(crate::cli::list::format_tag_block(&m), "");
+    }
+
+    #[test]
+    fn test_list_row_tag_block_shows_tags() {
+        use crate::store::Memory;
+        let mut m = Memory::new("2026-03-11", "10:00:00", "borrow checker");
+        m.tags = vec!["rust".to_string(), "til".to_string()];
+        assert_eq!(crate::cli::list::format_tag_block(&m), "[#rust, #til] ");
+    }
+
+    #[test]
+    fn test_t_key_enters_tag_filter_mode() {
+        let mut app = App::from_memories(vec![]);
+        handle_key(&mut app, key(KeyCode::Char('t')));
+        assert_eq!(app.mode, Mode::TagFilter);
+        assert_eq!(app.tag_picker_selected, 0);
+    }
+
+    #[test]
+    fn test_esc_clears_active_tag_filter() {
+        use crate::store::Memory;
+        let mut m = Memory::new("2026-03-11", "10:00:00", "text");
+        m.tags = vec!["rust".to_string()];
+        let mut app = App::from_memories(vec![m]);
+        app.active_tag_filter = Some("rust".to_string());
+        app.visible = app.memories.iter().filter(|m| m.tags.contains(&"rust".to_string())).cloned().collect();
+        handle_key(&mut app, key(KeyCode::Esc));
+        assert!(app.active_tag_filter.is_none());
+        assert_eq!(app.visible.len(), 1); // full list restored
         assert_eq!(app.selected, 0);
     }
 }

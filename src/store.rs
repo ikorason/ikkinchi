@@ -7,6 +7,7 @@ pub struct Memory {
     pub date: String, // "2026-03-10"
     pub time: String, // "14:32:05"
     pub text: String,
+    pub tags: Vec<String>,
 }
 
 impl Memory {
@@ -16,6 +17,7 @@ impl Memory {
             date: date.to_string(),
             time: time.to_string(),
             text: text.to_string(),
+            tags: vec![],
         }
     }
 }
@@ -33,7 +35,7 @@ impl Store {
         Self::new(crate::config::memories_dir())
     }
 
-    pub fn append(&self, text: &str) -> anyhow::Result<String> {
+    pub fn append(&self, text: &str, tags: &[String]) -> anyhow::Result<String> {
         let now = chrono::Local::now();
         let date = now.format("%Y-%m-%d").to_string();
         let time = now.format("%H:%M:%S").to_string();
@@ -42,7 +44,22 @@ impl Store {
         let file_path = self.memories_dir.join(format!("{}.md", date));
 
         let text = text.trim();
-        let entry = format!("## {}\n\n{}\n\n", time, text);
+        let mut entry = format!("## {}\n", time);
+
+        // Normalize tags, preserve input order, deduplicate
+        let mut seen = std::collections::HashSet::new();
+        let ordered: Vec<String> = tags
+            .iter()
+            .filter_map(|t| normalize_tag(t))
+            .filter(|t| seen.insert(t.clone()))
+            .collect();
+
+        if !ordered.is_empty() {
+            let tag_line = ordered.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(", ");
+            entry.push_str(&format!("{}\n", tag_line));
+        }
+        entry.push_str(&format!("\n{}\n\n", text));
+
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -112,6 +129,43 @@ impl Store {
         write_file(&file_path, &memories)
     }
 
+    pub fn add_tags(&self, id: &str, new_tags: &[String]) -> anyhow::Result<()> {
+        let (date, time) = parse_id(id)?;
+        let file_path = self.memories_dir.join(format!("{}.md", date));
+        anyhow::ensure!(file_path.exists(), "Memory not found: {}", id);
+        let content = std::fs::read_to_string(&file_path)?;
+        let mut memories = parse_file(&date, &content);
+        let entry = memories
+            .iter_mut()
+            .find(|m| m.time == time)
+            .ok_or_else(|| anyhow::anyhow!("Memory not found: {}", id))?;
+        let mut seen: std::collections::HashSet<String> = entry.tags.iter().cloned().collect();
+        for raw in new_tags {
+            if let Some(normalized) = normalize_tag(raw) {
+                if seen.insert(normalized.clone()) {
+                    entry.tags.push(normalized);
+                }
+            }
+        }
+        write_file(&file_path, &memories)
+    }
+
+    pub fn remove_tags(&self, id: &str, tags_to_remove: &[String]) -> anyhow::Result<()> {
+        let (date, time) = parse_id(id)?;
+        let file_path = self.memories_dir.join(format!("{}.md", date));
+        anyhow::ensure!(file_path.exists(), "Memory not found: {}", id);
+        let content = std::fs::read_to_string(&file_path)?;
+        let mut memories = parse_file(&date, &content);
+        let entry = memories
+            .iter_mut()
+            .find(|m| m.time == time)
+            .ok_or_else(|| anyhow::anyhow!("Memory not found: {}", id))?;
+        let to_remove: std::collections::HashSet<String> =
+            tags_to_remove.iter().filter_map(|t| normalize_tag(t)).collect();
+        entry.tags.retain(|t| !to_remove.contains(t));
+        write_file(&file_path, &memories)
+    }
+
     pub fn delete(&self, id: &str) -> anyhow::Result<()> {
         let (date, time) = parse_id(id)?;
         let file_path = self.memories_dir.join(format!("{}.md", date));
@@ -146,10 +200,51 @@ fn parse_id(id: &str) -> anyhow::Result<(String, String)> {
 fn write_file(path: &PathBuf, memories: &[Memory]) -> anyhow::Result<()> {
     let mut content = String::new();
     for m in memories {
-        content.push_str(&format!("## {}\n\n{}\n\n", m.time, m.text));
+        content.push_str(&format!("## {}\n", m.time));
+        if !m.tags.is_empty() {
+            let tag_line = m.tags
+                .iter()
+                .map(|t| format!("#{}", t))
+                .collect::<Vec<_>>()
+                .join(", ");
+            content.push_str(&format!("{}\n", tag_line));
+        }
+        content.push_str(&format!("\n{}\n\n", m.text));
     }
     std::fs::write(path, content)?;
     Ok(())
+}
+
+/// Normalize a single tag string: lowercase, strip disallowed chars, trim.
+/// Returns `None` if the result is empty.
+fn normalize_tag(raw: &str) -> Option<String> {
+    let normalized: String = raw
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-')
+        .flat_map(|c| c.to_lowercase())
+        .collect();
+    let tag = normalized.trim().to_string();
+    if tag.is_empty() { None } else { Some(tag) }
+}
+
+#[must_use]
+pub fn parse_tag_line(line: &str) -> Vec<String> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('#') {
+        return vec![];
+    }
+    let mut tags = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for part in trimmed.split(',') {
+        let raw = part.trim().strip_prefix('#').unwrap_or("").trim();
+        if let Some(tag) = normalize_tag(raw) {
+            if !seen.contains(tag.as_str()) {
+                seen.insert(tag.clone());
+                tags.push(tag);
+            }
+        }
+    }
+    tags
 }
 
 fn parse_time_header(line: &str) -> Option<String> {
@@ -179,9 +274,9 @@ fn parse_file(date: &str, content: &str) -> Vec<Memory> {
     for line in content.lines() {
         if let Some(time) = parse_time_header(line) {
             if let Some(ref t) = current_time {
-                let text = current_body.join("\n").trim().to_string();
-                if !text.is_empty() {
-                    memories.push(Memory::new(date, t, &text));
+                let memory = build_memory(date, t, &current_body);
+                if !memory.text.is_empty() {
+                    memories.push(memory);
                 }
             }
             current_time = Some(time);
@@ -192,13 +287,52 @@ fn parse_file(date: &str, content: &str) -> Vec<Memory> {
     }
 
     if let Some(ref t) = current_time {
-        let text = current_body.join("\n").trim().to_string();
-        if !text.is_empty() {
-            memories.push(Memory::new(date, t, &text));
+        let memory = build_memory(date, t, &current_body);
+        if !memory.text.is_empty() {
+            memories.push(memory);
         }
     }
 
     memories
+}
+
+/// Build a Memory from raw body lines, extracting the tag line if present.
+/// The tag line must be the very first line after the timestamp header (no
+/// preceding blank line). A line is a tag line if and only if `parse_tag_line`
+/// returns a non-empty result. Body lines after the tag line (or all body lines
+/// if no tag line) form the text.
+///
+/// # Heading/tag ambiguity
+///
+/// Because the first line after the header is always checked as a tag candidate,
+/// a markdown heading like `# intro` placed immediately after `## HH:MM:SS`
+/// (with no blank line in between) **is** treated as a tag line yielding
+/// `["intro"]`. This is intentional spec behavior. To include a markdown heading
+/// as body text, separate it from the timestamp header with a blank line.
+fn build_memory(date: &str, time: &str, body_lines: &[&str]) -> Memory {
+    let mut start = 0;
+
+    // Delegate tag-line detection entirely to parse_tag_line.
+    let tags = if let Some(first) = body_lines.first() {
+        let candidate_tags = parse_tag_line(first);
+        if !candidate_tags.is_empty() {
+            start = 1; // consume tag line
+            candidate_tags
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    let text = body_lines[start..]
+        .join("\n")
+        .trim()
+        .to_string();
+
+    let mut m = Memory::new(date, time, &text);
+    m.tags = tags;
+    m
 }
 
 #[cfg(test)]
@@ -230,7 +364,7 @@ mod tests {
     #[test]
     fn test_append_creates_file_with_correct_format() {
         let (_dir, store) = test_store();
-        let id = store.append("hello world").unwrap();
+        let id = store.append("hello world", &[]).unwrap();
 
         // id must be "YYYY-MM-DD/HH:MM:SS"
         let parts: Vec<&str> = id.splitn(2, '/').collect();
@@ -249,8 +383,8 @@ mod tests {
     #[test]
     fn test_append_twice_same_file_keeps_both() {
         let (_dir, store) = test_store();
-        store.append("first").unwrap();
-        store.append("second").unwrap();
+        store.append("first", &[]).unwrap();
+        store.append("second", &[]).unwrap();
 
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let file_path = store.memories_dir.join(format!("{}.md", today));
@@ -393,5 +527,285 @@ mod tests {
         let memory = store.get("2026-03-10/14:32").unwrap();
         assert!(memory.is_some());
         assert_eq!(memory.unwrap().text, "legacy entry");
+    }
+
+    #[test]
+    fn test_memory_new_has_empty_tags_by_default() {
+        let m = Memory::new("2026-03-10", "14:32:05", "hello");
+        assert!(m.tags.is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_empty() {
+        assert!(parse_tag_line("").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_no_hash() {
+        assert!(parse_tag_line("no hash prefix").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_single_tag() {
+        assert_eq!(parse_tag_line("#rust"), vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_multiple_tags() {
+        assert_eq!(parse_tag_line("#rust, #til"), vec!["rust", "til"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_multiword_tag() {
+        assert_eq!(parse_tag_line("#shower thought, #rust"), vec!["shower thought", "rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_dedup_and_lowercase() {
+        assert_eq!(parse_tag_line("#Rust, #RUST, #rust"), vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_whitespace_trimmed() {
+        assert_eq!(parse_tag_line("  #rust  ,  #til  "), vec!["rust", "til"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_bare_hash_ignored() {
+        assert!(parse_tag_line("#").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_empty_tag_part_skipped() {
+        assert_eq!(parse_tag_line("#, #rust"), vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_plain_text_is_not_tag_line() {
+        assert!(parse_tag_line("just some text").is_empty());
+    }
+
+    #[test]
+    fn test_parse_tag_line_strips_underscore() {
+        assert_eq!(parse_tag_line("#rust_lang"), vec!["rustlang"]);
+    }
+
+    #[test]
+    fn test_parse_tag_line_strips_slash() {
+        assert_eq!(parse_tag_line("#rust/lang"), vec!["rustlang"]);
+    }
+
+    #[test]
+    fn test_parse_file_with_tag_line() {
+        let content = "## 14:32:05\n#rust, #til\n\nborrow checker is tricky\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert_eq!(memories[0].tags, vec!["rust", "til"]);
+        assert_eq!(memories[0].text, "borrow checker is tricky");
+    }
+
+    #[test]
+    fn test_parse_file_without_tag_line_has_empty_tags() {
+        let content = "## 15:00:00\n\nwhat do fish think about\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert!(memories[0].tags.is_empty());
+        assert_eq!(memories[0].text, "what do fish think about");
+    }
+
+    #[test]
+    fn test_parse_file_multiword_tag() {
+        let content = "## 16:00:00\n#shower thought\n\nwhy is water wet\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories[0].tags, vec!["shower thought"]);
+        assert_eq!(memories[0].text, "why is water wet");
+    }
+
+    #[test]
+    fn test_parse_file_hash_in_body_not_treated_as_tag_line() {
+        // A markdown heading in the body should NOT be parsed as a tag line
+        let content = "## 10:00:00\n\n# not a tag\n\nsome text\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert!(memories[0].tags.is_empty());
+        assert!(memories[0].text.contains("# not a tag"));
+    }
+
+    #[test]
+    fn test_parse_file_two_entries_both_tagged() {
+        let content = "## 09:00:00\n#morning\n\nfirst\n\n## 10:00:00\n#rust\n\nsecond\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories.len(), 2);
+        assert_eq!(memories[0].tags, vec!["morning"]);
+        assert_eq!(memories[1].tags, vec!["rust"]);
+    }
+
+    #[test]
+    fn test_parse_file_space_after_hash_is_tag_line() {
+        let content = "## 14:32:05\n# rust\n\nborrow checker\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories.len(), 1);
+        assert_eq!(memories[0].tags, vec!["rust"]);
+        assert_eq!(memories[0].text, "borrow checker");
+    }
+
+    #[test]
+    fn test_parse_file_heading_without_blank_immediately_after_header_is_tag() {
+        // Per spec: the first line after the timestamp is always checked as a tag candidate.
+        // A markdown heading like "# intro" immediately after the header (no blank line)
+        // is treated as a tag line yielding ["intro"]. To avoid this, leave a blank line.
+        let content = "## 10:00:00\n# intro\n\nsome text\n\n";
+        let memories = parse_file("2026-03-11", content);
+        assert_eq!(memories[0].tags, vec!["intro"]);
+        assert_eq!(memories[0].text, "some text");
+    }
+
+    #[test]
+    fn test_write_file_emits_tag_line() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        let mut m = Memory::new("2026-03-11", "14:32:05", "borrow checker");
+        m.tags = vec!["rust".to_string(), "til".to_string()];
+        write_file(&file_path, &[m]).unwrap();
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        assert!(content.contains("#rust, #til"), "tag line missing: {}", content);
+    }
+
+    #[test]
+    fn test_write_file_no_tag_line_when_empty() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        let m = Memory::new("2026-03-11", "14:32:05", "no tags");
+        write_file(&file_path, &[m]).unwrap();
+        let content = std::fs::read_to_string(&file_path).unwrap();
+        // No tag line should appear; the only '#' chars are in the '## HH:MM:SS' header
+        assert!(!content.lines().any(|l| l.starts_with('#') && !l.starts_with("##")),
+            "unexpected tag line in content: {}", content);
+    }
+
+    #[test]
+    fn test_append_with_tags_writes_tag_line() {
+        let (_dir, store) = test_store();
+        let tags = vec!["rust".to_string(), "til".to_string()];
+        let id = store.append("learned lifetimes", &tags).unwrap();
+        let memory = store.get(&id).unwrap().unwrap();
+        assert_eq!(memory.tags, vec!["rust", "til"]);
+        assert_eq!(memory.text, "learned lifetimes");
+    }
+
+    #[test]
+    fn test_append_without_tags_backward_compat() {
+        let (_dir, store) = test_store();
+        let id = store.append("plain thought", &[]).unwrap();
+        let memory = store.get(&id).unwrap().unwrap();
+        assert!(memory.tags.is_empty());
+        assert_eq!(memory.text, "plain thought");
+    }
+
+    #[test]
+    fn test_write_file_round_trips_tags() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        let mut m = Memory::new("2026-03-11", "14:32:05", "borrow checker");
+        m.tags = vec!["rust".to_string(), "til".to_string()];
+        write_file(&file_path, &[m]).unwrap();
+        let memory = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(memory.tags, vec!["rust", "til"]);
+        assert_eq!(memory.text, "borrow checker");
+    }
+
+    #[test]
+    fn test_append_deduplicates_tags() {
+        let (_dir, store) = test_store();
+        let tags = vec!["rust".to_string(), "RUST".to_string(), "rust".to_string()];
+        let id = store.append("test", &tags).unwrap();
+        let memory = store.get(&id).unwrap().unwrap();
+        assert_eq!(memory.tags, vec!["rust"]); // deduped to one
+    }
+
+    #[test]
+    fn test_add_tags_to_existing_memory() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n\nborrow checker\n\n").unwrap();
+
+        store.add_tags("2026-03-11/14:32:05", &["rust".to_string(), "til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust", "til"]);
+        assert_eq!(m.text, "borrow checker");
+    }
+
+    #[test]
+    fn test_add_tags_merges_with_existing() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.add_tags("2026-03-11/14:32:05", &["til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert!(m.tags.contains(&"rust".to_string()));
+        assert!(m.tags.contains(&"til".to_string()));
+    }
+
+    #[test]
+    fn test_add_tags_duplicate_is_noop() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.add_tags("2026-03-11/14:32:05", &["rust".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust"]); // still only one
+    }
+
+    #[test]
+    fn test_add_tags_nonexistent_id_errors() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let result = store.add_tags("2026-03-11/99:99:99", &["rust".to_string()]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_remove_tags_from_memory() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust, #til\n\nborrow checker\n\n").unwrap();
+
+        store.remove_tags("2026-03-11/14:32:05", &["til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust"]);
+    }
+
+    #[test]
+    fn test_remove_nonexistent_tag_is_noop() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.remove_tags("2026-03-11/14:32:05", &["til".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert_eq!(m.tags, vec!["rust"]); // unchanged
+    }
+
+    #[test]
+    fn test_remove_all_tags_leaves_empty_tags() {
+        let (_dir, store) = test_store();
+        std::fs::create_dir_all(&store.memories_dir).unwrap();
+        let file_path = store.memories_dir.join("2026-03-11.md");
+        std::fs::write(&file_path, "## 14:32:05\n#rust\n\nborrow checker\n\n").unwrap();
+
+        store.remove_tags("2026-03-11/14:32:05", &["rust".to_string()]).unwrap();
+        let m = store.get("2026-03-11/14:32:05").unwrap().unwrap();
+        assert!(m.tags.is_empty());
+        assert_eq!(m.text, "borrow checker"); // text preserved
     }
 }

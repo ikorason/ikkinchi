@@ -10,7 +10,7 @@ your second brain, a zero-friction CLI for capturing and retrieving thoughts.
 
 Thoughts are stored as plain markdown files in `~/.ikkinchi/memories/`.
 
-Search is hybrid: semantic via Ollama embeddings + fuzzy matching. No folders, no tags, no cloud.
+Search is hybrid: semantic via Ollama embeddings + fuzzy matching. No folders, no cloud.
 
 ## Install
 
@@ -45,6 +45,7 @@ ikkinchi init
 
 ```bash
 ikkinchi add "what do fish think about all day?"
+ikkinchi add "learned how the borrow checker works" --tag rust --tag til
 ikkinchi add "There is a @swc/react-compiler package but no documentation"
 ```
 
@@ -64,10 +65,19 @@ At search time, Rig embeds your query using the same Ollama model and computes c
 
 ```bash
 ikkinchi tui               # open interactive terminal UI
-ikkinchi list              # newest first
+ikkinchi list              # newest first, with tags shown
+ikkinchi list --tag rust   # filter by tag
 ikkinchi edit <id> <text>  # update a thought (re-embeds automatically)
 ikkinchi delete <id>       # remove a thought
-ikkinchi stats             # memory count, date range, vector count
+ikkinchi stats             # memory count, date range, vector count, tag count
+```
+
+**Manage tags:**
+
+```bash
+ikkinchi tags                          # list all tags with counts
+ikkinchi tag add <id> rust til         # add tags to a memory
+ikkinchi tag remove <id> til           # remove a tag
 ```
 
 **Rebuild the vector index:**
@@ -109,17 +119,20 @@ You can read, edit, or back up your memories directly — they're just markdown.
 ## Commands
 
 ```
-ikkinchi init              Set up ~/.ikkinchi/, create config
-ikkinchi add <text>        Capture a thought
-ikkinchi search <query>    Semantic + fuzzy hybrid search
-ikkinchi tui               Launch interactive terminal UI
-ikkinchi list [--count N]  Browse recent memories
-ikkinchi edit <id> <text>  Update a memory
-ikkinchi delete <id>...    Delete one or more memories
-ikkinchi import <path>     Import .md/.txt files
+ikkinchi init                          Set up ~/.ikkinchi/, create config
+ikkinchi add <text> [--tag <tag>]...   Capture a thought, optionally tagged
+ikkinchi search <query> [--tag <tag>]  Semantic + fuzzy hybrid search
+ikkinchi tui                           Launch interactive terminal UI
+ikkinchi list [--count N] [--tag <tag>] Browse recent memories
+ikkinchi edit <id> <text>              Update a memory
+ikkinchi delete <id>...                Delete one or more memories
+ikkinchi tags                          List all tags with counts
+ikkinchi tag add <id> <tag>...         Add tags to a memory
+ikkinchi tag remove <id> <tag>...      Remove tags from a memory
+ikkinchi import <path>                 Import .md/.txt files
 ikkinchi export [--format json|markdown]  Export all memories
-ikkinchi reindex           Rebuild vector index from markdown files
-ikkinchi stats             Show memory and vector counts
+ikkinchi reindex                       Rebuild vector index from markdown files
+ikkinchi stats                         Show memory, vector, and tag counts
 ```
 
 Run `ikkinchi --help` for details on any command.

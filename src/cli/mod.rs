@@ -8,6 +8,8 @@ pub mod list;
 pub mod reindex;
 pub mod search;
 pub mod stats;
+pub mod tag;
+pub mod tags;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -32,12 +34,18 @@ pub enum Commands {
     Add {
         /// The thought to capture
         text: String,
+        /// Tag(s) to attach (repeatable: --tag rust --tag til)
+        #[arg(short, long)]
+        tag: Vec<String>,
     },
 
     /// Semantic + fuzzy hybrid search
     Search {
         /// Search query
         query: String,
+        /// Filter results by tag
+        #[arg(short, long)]
+        tag: Option<String>,
     },
 
     /// List memories, newest first
@@ -45,6 +53,9 @@ pub enum Commands {
         /// Number of memories to show (default: 20)
         #[arg(short, long)]
         count: Option<usize>,
+        /// Filter by tag
+        #[arg(short, long)]
+        tag: Option<String>,
     },
 
     /// Replace a memory's content
@@ -74,6 +85,15 @@ pub enum Commands {
         format: Option<String>,
     },
 
+    /// Add or remove tags on a memory
+    Tag {
+        #[command(subcommand)]
+        action: TagAction,
+    },
+
+    /// List all tags with counts
+    Tags,
+
     /// Show brain statistics
     Stats,
 
@@ -82,4 +102,22 @@ pub enum Commands {
 
     /// Launch interactive TUI
     Tui,
+}
+
+#[derive(Subcommand)]
+pub enum TagAction {
+    /// Add tags to a memory
+    Add {
+        /// Memory ID (e.g. 2026-03-11/14:32:05)
+        id: String,
+        /// Tag(s) to add
+        tags: Vec<String>,
+    },
+    /// Remove tags from a memory
+    Remove {
+        /// Memory ID (e.g. 2026-03-11/14:32:05)
+        id: String,
+        /// Tag(s) to remove
+        tags: Vec<String>,
+    },
 }

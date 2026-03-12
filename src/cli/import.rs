@@ -19,7 +19,7 @@ async fn import_one(
 ) -> Result<()> {
     let content = std::fs::read_to_string(path)?;
     for chunk in chunk_text(&content) {
-        let id = store.append(&chunk)?;
+        let id = store.append(&chunk, &[])?;
         println!("Imported: {}", id);
 
         if let Some((client, db)) = embed {

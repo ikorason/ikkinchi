@@ -19,6 +19,7 @@ pub fn format_memories(memories: &[Memory], format: Option<&str>) -> Result<Stri
                         "date": m.date,
                         "time": m.time,
                         "text": m.text,
+                        "tags": m.tags,
                     })
                 })
                 .collect();
@@ -97,5 +98,22 @@ mod tests {
     fn test_export_unknown_format_errors() {
         let result = format_memories(&[], Some("csv"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_export_json_includes_tags() {
+        let mut m = make_memory("2026-03-10", "14:32:05", "tagged");
+        m.tags = vec!["rust".to_string(), "til".to_string()];
+        let result = format_memories(&[m], Some("json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed[0]["tags"], serde_json::json!(["rust", "til"]));
+    }
+
+    #[test]
+    fn test_export_json_empty_tags_is_array() {
+        let m = make_memory("2026-03-10", "14:32:05", "no tags");
+        let result = format_memories(&[m], Some("json")).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed[0]["tags"], serde_json::json!([]));
     }
 }

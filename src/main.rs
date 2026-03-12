@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use ikkinchi::cli::{Cli, Commands};
+use ikkinchi::cli::{Cli, Commands, TagAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -8,15 +8,20 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Init => ikkinchi::cli::init::run().await?,
-        Commands::Add { text } => ikkinchi::cli::add::run(&text).await?,
-        Commands::Search { query } => ikkinchi::cli::search::run(&query).await?,
-        Commands::List { count } => ikkinchi::cli::list::run(count).await?,
+        Commands::Add { text, tag } => ikkinchi::cli::add::run(&text, &tag).await?,
+        Commands::Search { query, tag } => ikkinchi::cli::search::run(&query, tag).await?,
+        Commands::List { count, tag } => ikkinchi::cli::list::run(count, tag).await?,
         Commands::Edit { id, text } => ikkinchi::cli::edit::run(&id, &text).await?,
         Commands::Delete { ids } => ikkinchi::cli::delete::run(&ids).await?,
         Commands::Import { path } => ikkinchi::cli::import::run(&path).await?,
         Commands::Export { format } => {
             ikkinchi::cli::export::run(format.as_deref()).await?
         }
+        Commands::Tag { action } => match action {
+            TagAction::Add { id, tags } => ikkinchi::cli::tag::run_add(&id, &tags).await?,
+            TagAction::Remove { id, tags } => ikkinchi::cli::tag::run_remove(&id, &tags).await?,
+        },
+        Commands::Tags => ikkinchi::cli::tags::run().await?,
         Commands::Stats => ikkinchi::cli::stats::run().await?,
         Commands::Reindex => ikkinchi::cli::reindex::run().await?,
         Commands::Tui => ikkinchi::tui::run().await?,

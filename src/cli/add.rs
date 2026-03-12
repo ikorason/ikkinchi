@@ -4,10 +4,10 @@ use crate::store::Store;
 use crate::vectordb::VectorDb;
 use anyhow::Result;
 
-pub async fn run(text: &str) -> Result<()> {
+pub async fn run(text: &str, tags: &[String]) -> Result<()> {
     let config = Config::load()?;
     let store = Store::from_config();
-    let id = store.append(text)?;
+    let id = store.append(text, tags)?;
     println!("Captured: {}", id);
 
     // Embed and store vector — non-fatal if Ollama is unavailable

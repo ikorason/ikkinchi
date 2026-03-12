@@ -27,10 +27,25 @@ pub fn render(app: &App, frame: &mut Frame, area: Rect) {
     let inner = block.inner(modal);
     frame.render_widget(block, modal);
 
-    let text_widget = Paragraph::new(memory.text.as_str())
-        .style(Style::default().fg(Color::White))
-        .wrap(Wrap { trim: false });
-    frame.render_widget(text_widget, inner);
+    if memory.tags.is_empty() {
+        let text_widget = Paragraph::new(memory.text.as_str())
+            .style(Style::default().fg(Color::White))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(text_widget, inner);
+    } else {
+        let tags_display = memory.tags.iter().map(|t| format!("#{}", t)).collect::<Vec<_>>().join(", ");
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(inner);
+        let tags_widget = Paragraph::new(format!("Tags: {}", tags_display))
+            .style(Style::default().fg(Color::Gray));
+        let text_widget = Paragraph::new(memory.text.as_str())
+            .style(Style::default().fg(Color::White))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(tags_widget, chunks[0]);
+        frame.render_widget(text_widget, chunks[1]);
+    }
 }
 
 pub fn handle_key(app: &mut App, key: KeyEvent) {
