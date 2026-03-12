@@ -32,6 +32,9 @@ pub enum Commands {
     Add {
         /// The thought to capture
         text: String,
+        /// Tag(s) to attach (repeatable: --tag rust --tag til)
+        #[arg(short, long)]
+        tag: Vec<String>,
     },
 
     /// Semantic + fuzzy hybrid search
@@ -45,6 +48,9 @@ pub enum Commands {
         /// Number of memories to show (default: 20)
         #[arg(short, long)]
         count: Option<usize>,
+        /// Filter by tag
+        #[arg(short, long)]
+        tag: Option<String>,
     },
 
     /// Replace a memory's content
