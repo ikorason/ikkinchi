@@ -100,7 +100,7 @@ async fn semantic_search(
 }
 
 
-pub async fn run(query: &str) -> Result<()> {
+pub async fn run(query: &str, tag: Option<String>) -> Result<()> {
     let config = Config::load()?;
     let limit = config.display.list_count;
     let store = Store::from_config();
@@ -154,21 +154,36 @@ pub async fn run(query: &str) -> Result<()> {
     let ranked = hybrid_rank(&semantic_results, &fuzzy_results, limit);
 
     if ranked.is_empty() {
-        println!("No memories found for: {}", query);
+        match &tag {
+            None => println!("No memories found for: {}", query),
+            Some(t) => println!("No results for: {} (tag: #{})", query, t.to_lowercase()),
+        }
         return Ok(());
     }
 
-    // 4. Resolve IDs back to Memory structs
+    // 4. Resolve IDs back to Memory structs and apply optional tag filter
     let mut display_index = 1;
+    let tag_normalized = tag.as_deref().map(|t| t.to_lowercase());
     for (id, _score) in &ranked {
         match store.get(id)? {
             Some(m) => {
+                if let Some(ref t) = tag_normalized {
+                    if !m.tags.contains(t) {
+                        continue;
+                    }
+                }
                 println!("{:>3}  {}  {}", display_index, m.id, m.text);
                 display_index += 1;
             }
             None => {
                 eprintln!("Warning: memory '{}' found in vector index but not in store (run `ikkinchi reindex`)", id);
             }
+        }
+    }
+
+    if display_index == 1 {
+        if let Some(t) = &tag {
+            println!("No results for: {} (tag: #{})", query, t.to_lowercase());
         }
     }
 

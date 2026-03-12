@@ -9,7 +9,7 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Init => ikkinchi::cli::init::run().await?,
         Commands::Add { text, tag } => ikkinchi::cli::add::run(&text, &tag).await?,
-        Commands::Search { query } => ikkinchi::cli::search::run(&query).await?,
+        Commands::Search { query, tag } => ikkinchi::cli::search::run(&query, tag).await?,
         Commands::List { count, tag } => ikkinchi::cli::list::run(count, tag).await?,
         Commands::Edit { id, text } => ikkinchi::cli::edit::run(&id, &text).await?,
         Commands::Delete { ids } => ikkinchi::cli::delete::run(&ids).await?,

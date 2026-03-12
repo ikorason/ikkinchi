@@ -41,6 +41,9 @@ pub enum Commands {
     Search {
         /// Search query
         query: String,
+        /// Filter results by tag
+        #[arg(short, long)]
+        tag: Option<String>,
     },
 
     /// List memories, newest first
