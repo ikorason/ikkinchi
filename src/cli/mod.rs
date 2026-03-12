@@ -8,6 +8,8 @@ pub mod list;
 pub mod reindex;
 pub mod search;
 pub mod stats;
+pub mod tag;
+pub mod tags;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -83,6 +85,15 @@ pub enum Commands {
         format: Option<String>,
     },
 
+    /// Add or remove tags on a memory
+    Tag {
+        #[command(subcommand)]
+        action: TagAction,
+    },
+
+    /// List all tags with counts
+    Tags,
+
     /// Show brain statistics
     Stats,
 
@@ -91,4 +102,22 @@ pub enum Commands {
 
     /// Launch interactive TUI
     Tui,
+}
+
+#[derive(Subcommand)]
+pub enum TagAction {
+    /// Add tags to a memory
+    Add {
+        /// Memory ID (e.g. 2026-03-11/14:32:05)
+        id: String,
+        /// Tag(s) to add
+        tags: Vec<String>,
+    },
+    /// Remove tags from a memory
+    Remove {
+        /// Memory ID (e.g. 2026-03-11/14:32:05)
+        id: String,
+        /// Tag(s) to remove
+        tags: Vec<String>,
+    },
 }

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
-use ikkinchi::cli::{Cli, Commands};
+use ikkinchi::cli::{Cli, Commands, TagAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,6 +17,11 @@ async fn main() -> Result<()> {
         Commands::Export { format } => {
             ikkinchi::cli::export::run(format.as_deref()).await?
         }
+        Commands::Tag { action } => match action {
+            TagAction::Add { id, tags } => ikkinchi::cli::tag::run_add(&id, &tags).await?,
+            TagAction::Remove { id, tags } => ikkinchi::cli::tag::run_remove(&id, &tags).await?,
+        },
+        Commands::Tags => ikkinchi::cli::tags::run().await?,
         Commands::Stats => ikkinchi::cli::stats::run().await?,
         Commands::Reindex => ikkinchi::cli::reindex::run().await?,
         Commands::Tui => ikkinchi::tui::run().await?,
