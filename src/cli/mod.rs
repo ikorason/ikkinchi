@@ -39,13 +39,16 @@ pub enum Commands {
         tag: Vec<String>,
     },
 
-    /// Semantic + fuzzy hybrid search
+    /// Search memories (fuzzy by default, --semantic for semantic search)
     Search {
         /// Search query
         query: String,
         /// Filter results by tag
         #[arg(short, long)]
         tag: Option<String>,
+        /// Use semantic search (requires Ollama running)
+        #[arg(long)]
+        semantic: bool,
     },
 
     /// List memories, newest first
