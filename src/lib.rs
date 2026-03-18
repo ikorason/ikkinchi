@@ -4,6 +4,7 @@ pub mod config;
 pub mod embed;
 pub mod import;
 pub mod search;
+pub mod semantic;
 pub mod store;
 pub mod tui;
 pub mod vectordb;
