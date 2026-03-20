@@ -10,7 +10,7 @@ your second brain, a zero-friction CLI for capturing and retrieving thoughts.
 
 Thoughts are stored as plain markdown files in `~/.ikkinchi/memories/`.
 
-Search is hybrid: semantic via Ollama embeddings + fuzzy matching. No folders, no cloud.
+Search is fuzzy by default. Add `--semantic` for Ollama-powered semantic search. No folders, no cloud.
 
 ## Install
 
@@ -20,7 +20,7 @@ cargo install ikkinchi
 
 ## Setup
 
-ikkinchi uses [Ollama](https://ollama.com) for local embeddings — no API key, no data leaving your machine.
+ikkinchi uses [Ollama](https://ollama.com) for semantic search — no API key, no data leaving your machine. Fuzzy search works without Ollama.
 
 Embeddings are powered by [Rig](https://github.com/0xPlaygrounds/rig), a Rust library for building LLM-powered applications.
 
@@ -51,15 +51,21 @@ ikkinchi add "There is a @swc/react-compiler package but no documentation"
 
 Each thought is appended to a daily markdown file (`~/.ikkinchi/memories/2026-03-10.md`). In the background, Rig calls Ollama to embed the text into a 768-dimension vector, which is persisted in a local SQLite store (`~/.ikkinchi/vectors.db`).
 
-**Search semantically — not just by keyword:**
+**Search your memories:**
 
 ```bash
+# Fuzzy search (default — works without Ollama)
 $ ikkinchi search "work"
   1  2026-03-10/19:54:08  There is a @swc/react-compiler package but no documentation
   ...
+
+# Semantic search (requires Ollama running)
+$ ikkinchi search --semantic "borrowing in rust"
+  1  2026-03-10/19:54:08  learned how the borrow checker works
+  ...
 ```
 
-At search time, Rig embeds your query using the same Ollama model and computes cosine similarity against all stored vectors. Results are blended with fuzzy text matching (0.6 × semantic + 0.4 × fuzzy). If Ollama is unavailable, search falls back to fuzzy-only automatically.
+Fuzzy search uses `SkimMatcherV2` to rank results by text similarity — fast, offline, no setup. Semantic search embeds your query with Ollama and ranks by cosine similarity against stored vectors — understands meaning, not just keywords.
 
 **Browse and manage:**
 
@@ -113,7 +119,7 @@ You can read, edit, or back up your memories directly — they're just markdown.
 - **[Rig](https://github.com/0xPlaygrounds/rig)** — Rust LLM framework, handles all Ollama communication and embedding calls
 - **[Ollama](https://ollama.com)** — runs `nomic-embed-text` locally, no internet required
 - **SQLite** (via `sqlx`) — persists embedding vectors as raw binary blobs
-- **fuzzy-matcher** — `SkimMatcherV2` for fuzzy text scoring, blended with semantic results
+- **fuzzy-matcher** — `SkimMatcherV2` for fast offline fuzzy text search
 - **Plain markdown** — memories are human-readable files, not a proprietary database
 
 ## Commands
@@ -121,7 +127,7 @@ You can read, edit, or back up your memories directly — they're just markdown.
 ```
 ikkinchi init                          Set up ~/.ikkinchi/, create config
 ikkinchi add <text> [--tag <tag>]...   Capture a thought, optionally tagged
-ikkinchi search <query> [--tag <tag>]  Semantic + fuzzy hybrid search
+ikkinchi search <query> [--tag <tag>] [--semantic]  Search memories (fuzzy by default)
 ikkinchi tui                           Launch interactive terminal UI
 ikkinchi list [--count N] [--tag <tag>] Browse recent memories
 ikkinchi edit <id> <text>              Update a memory
